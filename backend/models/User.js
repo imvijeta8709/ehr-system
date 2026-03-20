@@ -25,6 +25,7 @@ const userSchema = new mongoose.Schema(
     licenseNumber: { type: String },
     experience: { type: Number },
     isActive: { type: Boolean, default: true },
+    avatar: { type: String, default: '' },
   },
   { timestamps: true }
 );

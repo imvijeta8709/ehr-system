@@ -27,6 +27,13 @@ const ROLES = [
   { key: 'patient', label: 'Patient', icon: 'bi-person',       color: '#00C9A7', bg: '#E6FAF7' },
 ];
 
+// Role templates
+const TEMPLATES = {
+  fullAccess: Object.fromEntries(ALL_MODULES.map((m) => [m, { view: true, create: true, edit: true, delete: true }])),
+  readOnly:   Object.fromEntries(ALL_MODULES.map((m) => [m, { view: true, create: false, edit: false, delete: false }])),
+  noAccess:   Object.fromEntries(ALL_MODULES.map((m) => [m, { view: false, create: false, edit: false, delete: false }])),
+};
+
 // Safely deep-clone a permissions object, filling in missing modules/actions with false
 const clonePerms = (perms) => {
   const src = (perms && typeof perms === 'object') ? perms : {};
@@ -124,6 +131,32 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const applyTemplate = (tpl) => {
+    setLocalPerms((prev) => ({ ...prev, [activeRole]: clonePerms(TEMPLATES[tpl]) }));
+    setDirty(true);
+    toast.info(`Applied "${tpl}" template — save to confirm`);
+  };
+
+  // Toggle all modules for a single action column
+  const toggleColumn = (action) => {
+    const perms = localPerms[activeRole] || {};
+    const allOn = ALL_MODULES.every((m) => perms[m]?.[action]);
+    setLocalPerms((prev) => {
+      const rolePerms = clonePerms(prev[activeRole]);
+      ALL_MODULES.forEach((m) => {
+        rolePerms[m][action] = !allOn;
+        if (action === 'view' && allOn) {
+          rolePerms[m].create = false;
+          rolePerms[m].edit   = false;
+          rolePerms[m].delete = false;
+        }
+        if (action !== 'view' && !allOn) rolePerms[m].view = true;
+      });
+      return { ...prev, [activeRole]: rolePerms };
+    });
+    setDirty(true);
+  };
+
   const activePerms  = localPerms[activeRole] || {};
   const roleMeta     = ROLES.find((r) => r.key === activeRole);
   const enabledCount = ALL_MODULES.filter((m) => activePerms[m]?.view).length;
@@ -145,7 +178,7 @@ export default function SuperAdminDashboard() {
       </div>
 
       {/* Role selector tabs */}
-      <div className="d-flex gap-3 mb-4">
+      <div className="d-flex gap-3 mb-3 flex-wrap">
         {ROLES.map((r) => {
           const isActive = activeRole === r.key;
           const count    = ALL_MODULES.filter((m) => localPerms[r.key]?.[m]?.view).length;
@@ -184,6 +217,22 @@ export default function SuperAdminDashboard() {
         })}
       </div>
 
+      {/* Role templates */}
+      <div className="d-flex align-items-center gap-2 mb-4 flex-wrap">
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Templates:</span>
+        {[
+          { key: 'fullAccess', label: 'Full Access', color: 'var(--primary)' },
+          { key: 'readOnly',   label: 'Read Only',   color: '#0891b2' },
+          { key: 'noAccess',   label: 'No Access',   color: '#ef4444' },
+        ].map((t) => (
+          <button key={t.key} className="btn btn-sm"
+            style={{ fontSize: '0.75rem', padding: '3px 12px', background: 'var(--bg)', border: `1px solid ${t.color}40`, color: t.color, fontWeight: 600, borderRadius: 99 }}
+            onClick={() => applyTemplate(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Action legend */}
       <div className="d-flex flex-wrap align-items-center gap-3 mb-3">
         {ALL_ACTIONS.map((action) => {
@@ -217,12 +266,7 @@ export default function SuperAdminDashboard() {
                 <tr>
                   <th style={{ width: '30%' }}>
                     <div className="d-flex align-items-center gap-2">
-                      <div style={{
-                        width: 26, height: 26, borderRadius: 7,
-                        background: roleMeta?.bg,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: roleMeta?.color, fontSize: '0.85rem',
-                      }}>
+                      <div style={{ width: 26, height: 26, borderRadius: 7, background: roleMeta?.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: roleMeta?.color, fontSize: '0.85rem' }}>
                         <i className={`bi ${roleMeta?.icon}`} />
                       </div>
                       Module
@@ -230,18 +274,25 @@ export default function SuperAdminDashboard() {
                   </th>
                   {ALL_ACTIONS.map((action) => (
                     <th key={action} style={{ width: '15%', textAlign: 'center' }}>
-                      <span style={{
-                        background: ACTION_META[action].bg,
-                        color: ACTION_META[action].color,
-                        fontSize: '0.7rem', fontWeight: 700,
-                        padding: '3px 10px', borderRadius: 99,
-                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                      }}>
+                      <span style={{ background: ACTION_META[action].bg, color: ACTION_META[action].color, fontSize: '0.7rem', fontWeight: 700, padding: '3px 10px', borderRadius: 99, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         {ACTION_META[action].label}
                       </span>
                     </th>
                   ))}
                   <th style={{ width: '10%', textAlign: 'center' }}>All</th>
+                </tr>
+                {/* Column-toggle row */}
+                <tr style={{ background: 'var(--bg)' }}>
+                  <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, paddingLeft: 16 }}>TOGGLE ALL</td>
+                  {ALL_ACTIONS.map((action) => {
+                    const allOn = ALL_MODULES.every((m) => activePerms[m]?.[action]);
+                    return (
+                      <td key={action} style={{ textAlign: 'center' }}>
+                        <Toggle on={allOn} onChange={() => toggleColumn(action)} />
+                      </td>
+                    );
+                  })}
+                  <td />
                 </tr>
               </thead>
               <tbody>

@@ -19,10 +19,13 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email already registered' });
     }
 
+    // Strip empty strings so optional enum fields (e.g. gender) don't fail validation
+    const optional = { age, gender, phone, address, bloodGroup, specialization, licenseNumber };
+    const filtered = Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== '' && v !== null && v !== undefined));
+
     const user = await User.create({
       name, email, password, role: role || 'patient',
-      age, gender, phone, address, bloodGroup,
-      specialization, licenseNumber,
+      ...filtered,
     });
 
     // Send welcome email (non-blocking)

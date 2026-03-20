@@ -3,8 +3,17 @@ const AuditLog = require('../models/AuditLog');
 // GET /api/audit — admin only
 exports.getAuditLogs = async (req, res) => {
   try {
-    const { page = 1, limit = 20, userId } = req.query;
-    const query = userId ? { user: userId } : {};
+    const { page = 1, limit = 20, userId, action, resource, from, to } = req.query;
+
+    const query = {};
+    if (userId)   query.user     = userId;
+    if (action)   query.action   = { $regex: action, $options: 'i' };
+    if (resource) query.resource = resource;
+    if (from || to) {
+      query.createdAt = {};
+      if (from) query.createdAt.$gte = new Date(from);
+      if (to)   query.createdAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+    }
 
     const total = await AuditLog.countDocuments(query);
     const logs = await AuditLog.find(query)

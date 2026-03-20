@@ -6,7 +6,8 @@ exports.createVitals = async (req, res) => {
   try {
     const patientId = req.user.role === 'patient' ? req.user._id : req.body.patient;
     const vitals = await Vitals.create({ ...req.body, patient: patientId, doctor: req.user._id });
-    await vitals.populate(['patient', 'doctor'], 'name email');
+    await vitals.populate('patient', 'name email');
+    await vitals.populate('doctor', 'name email');
 
     AuditLog.create({ user: req.user._id, action: 'CREATE_VITALS', resource: 'Vitals', resourceId: vitals._id, ip: req.ip }).catch(() => {});
 
