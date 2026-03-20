@@ -13,6 +13,12 @@ const bloodRequestSchema = new mongoose.Schema(
     status: { type: String, enum: ['pending', 'approved', 'rejected', 'fulfilled'], default: 'pending' },
     adminNote: { type: String },
     fulfilledAt: { type: Date },
+    // Billing
+    pricePerUnit:    { type: Number, default: 0 },
+    emergencyCharge: { type: Number, default: 0 },
+    totalAmount:     { type: Number, default: 0 },
+    paymentStatus:   { type: String, enum: ['pending', 'paid'], default: 'pending' },
+    paidAt:          { type: Date },
   },
   { timestamps: true }
 );

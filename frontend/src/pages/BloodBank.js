@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { toast } from 'react-toastify';
+import BillingCard from '../components/BillingCard';
+import BillingConfigModal from '../components/BillingConfigModal';
 
 const BLOOD_GROUPS = ['A+','A-','B+','B-','AB+','AB-','O+','O-'];
 
@@ -225,11 +228,13 @@ function SuggestedDonorsModal({ requestId, bloodGroup, onClose }) {
 }
 
 // ── Requests Tab ─────────────────────────────────────────────────
-function RequestsTab({ isAdmin }) {
+function RequestsTab({ isAdmin, isSuperAdmin }) {
+  const { user } = useAuth();
   const [requests, setRequests] = useState([]);
-  const [inventory, setInventory] = useState({});   // { 'A+': 10, 'B-': 3, ... }
+  const [inventory, setInventory] = useState({});
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
   const [suggestFor, setSuggestFor] = useState(null);
   const [filters, setFilters] = useState({ status: '', bloodGroup: '' });
   const [actionLoading, setActionLoading] = useState('');
@@ -303,6 +308,11 @@ function RequestsTab({ isAdmin }) {
         <button className="btn btn-primary btn-sm" onClick={() => setShowModal(true)}>
           <i className="bi bi-plus-lg me-1" />New Request
         </button>
+        {isSuperAdmin && (
+          <button className="btn btn-outline-secondary btn-sm" onClick={() => setShowPricingModal(true)}>
+            <i className="bi bi-gear me-1" />Pricing
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -321,6 +331,7 @@ function RequestsTab({ isAdmin }) {
                   <th>Urgency</th>
                   <th>Hospital</th>
                   <th>Status</th>
+                  <th>Billing</th>
                   <th>Date</th>
                   {isAdmin && <th>Actions</th>}
                 </tr>
@@ -348,6 +359,21 @@ function RequestsTab({ isAdmin }) {
                       <td><span className={`badge ${urgencyColor[r.urgency]}`}>{r.urgency}</span></td>
                       <td style={{ fontSize: '0.8rem' }}>{r.hospital}<br /><span style={{ color: 'var(--text-muted)' }}>{r.location}</span></td>
                       <td><span className={`badge ${statusColor[r.status]}`}>{r.status}</span></td>
+                      <td>
+                        <BillingCard
+                          type="blood"
+                          item={r}
+                          canPay={
+                            user?.role === 'patient'
+                              ? r.requestedBy?._id === user?._id || r.patient?._id === user?._id
+                              : isAdmin
+                          }
+                          onPaid={load}
+                        />
+                        {r.status !== 'approved' && r.status !== 'fulfilled' && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
                       <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(r.createdAt).toLocaleDateString()}</td>
                       {isAdmin && (
                         <td>
@@ -417,6 +443,7 @@ function RequestsTab({ isAdmin }) {
 
       {showModal && <RequestModal onClose={() => setShowModal(false)} onSaved={() => { setShowModal(false); load(); }} />}
       {suggestFor && <SuggestedDonorsModal requestId={suggestFor._id} bloodGroup={suggestFor.bloodGroup} onClose={() => setSuggestFor(null)} />}
+      {showPricingModal && <BillingConfigModal type="blood" onClose={() => setShowPricingModal(false)} />}
     </div>
   );
 }
@@ -693,7 +720,8 @@ function InventoryTab({ isAdmin }) {
 export default function BloodBank() {
   const { user } = useAuth();
   const [tab, setTab] = useState('requests');
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const isAdmin      = user?.role === 'admin' || user?.role === 'superadmin';
+  const isSuperAdmin = user?.role === 'superadmin';
 
   const tabs = [
     { key: 'requests', label: 'Requests', icon: 'bi-droplet-half' },
@@ -734,7 +762,7 @@ export default function BloodBank() {
         ))}
       </div>
 
-      {tab === 'requests'  && <RequestsTab isAdmin={isAdmin} />}
+      {tab === 'requests'  && <RequestsTab isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} />}
       {tab === 'donors'    && <DonorsTab isAdmin={isAdmin} />}
       {tab === 'inventory' && <InventoryTab isAdmin={isAdmin} />}
     </div>

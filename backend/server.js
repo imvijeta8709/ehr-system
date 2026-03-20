@@ -23,7 +23,8 @@ app.use('/api/vitals', require('./routes/vitals'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/permissions', require('./routes/permissions'));
-app.use('/api/blood', require('./routes/bloodBank'));
+app.use('/api/blood',   require('./routes/bloodBank'));
+app.use('/api/billing', require('./routes/billing'));
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -1,6 +1,7 @@
 const Appointment = require('../models/Appointment');
 const Record = require('../models/Record');
 const Notification = require('../models/Notification');
+const { getConfig, calcConsultationTotal } = require('../utils/billingService');
 
 // POST /api/appointments
 exports.createAppointment = async (req, res) => {
@@ -95,6 +96,16 @@ exports.updateAppointment = async (req, res) => {
     const updated = await Appointment.findByIdAndUpdate(req.params.id, req.body, { new: true })
       .populate('patient', 'name email')
       .populate('doctor', 'name email specialization');
+
+    // Generate billing when appointment is completed
+    if (req.body.status === 'completed' && appointment.status !== 'completed') {
+      const config = await getConfig('consultation');
+      const fee    = config.consultationFee;
+      updated.consultationFee = fee;
+      updated.totalAmount     = calcConsultationTotal(fee);
+      updated.paymentStatus   = 'pending';
+      await updated.save();
+    }
 
     // Notify patient of status change
     if (req.body.status && req.body.status !== appointment.status) {
