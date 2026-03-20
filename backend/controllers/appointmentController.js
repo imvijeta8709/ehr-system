@@ -20,7 +20,8 @@ exports.createAppointment = async (req, res) => {
     }
 
     const appointment = await Appointment.create({ patient: patientId, doctor, date, timeSlot, reason });
-    await appointment.populate(['patient', 'doctor'], 'name email');
+    await appointment.populate('patient', 'name email');
+    await appointment.populate('doctor', 'name email');
 
     // Notify doctor
     Notification.create({

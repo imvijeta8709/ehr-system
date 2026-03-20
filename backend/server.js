@@ -23,6 +23,7 @@ app.use('/api/vitals', require('./routes/vitals'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/permissions', require('./routes/permissions'));
+app.use('/api/blood', require('./routes/bloodBank'));
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -41,6 +42,11 @@ mongoose
     // Seed default role permissions if not already present
     const RolePermission = require('./models/RolePermission');
     await RolePermission.seedDefaults();
+
+    // Seed blood inventory (all 8 groups with 0 units if not present)
+    const BloodInventory = require('./models/BloodInventory');
+    const groups = ['A+','A-','B+','B-','AB+','AB-','O+','O-'];
+    await Promise.all(groups.map(g => BloodInventory.findOneAndUpdate({ bloodGroup: g }, { $setOnInsert: { bloodGroup: g, units: 0 } }, { upsert: true, new: true })));
     const PORT = process.env.PORT || 8000;
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })

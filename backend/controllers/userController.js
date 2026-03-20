@@ -90,7 +90,12 @@ exports.updateUser = async (req, res) => {
     // Prevent role or password changes through this endpoint
     const { password, role, ...updateData } = req.body;
 
-    const updated = await User.findByIdAndUpdate(targetId, updateData, {
+    // Strip empty strings so optional enum fields (e.g. gender) don't fail validation
+    const cleanData = Object.fromEntries(
+      Object.entries(updateData).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+    );
+
+    const updated = await User.findByIdAndUpdate(targetId, cleanData, {
       new: true,
       runValidators: true,
     }).select('-password');
@@ -101,11 +106,68 @@ exports.updateUser = async (req, res) => {
   }
 };
 
+// POST /api/users/:id/avatar — upload profile picture
+exports.uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+
+    // Only allow the user themselves (or admin) to update avatar
+    const targetId = req.params.id;
+    if (req.user.role === 'patient' || req.user.role === 'doctor') {
+      if (req.user._id.toString() !== targetId) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
+    }
+
+    const avatarUrl = `/uploads/${req.file.filename}`;
+    const user = await User.findByIdAndUpdate(
+      targetId,
+      { avatar: avatarUrl },
+      { new: true }
+    ).select('-password');
+
+    res.json({ success: true, avatar: avatarUrl, user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // DELETE /api/users/:id — admin only
 exports.deleteUser = async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.params.id, { isActive: false });
     res.json({ success: true, message: 'User deactivated' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/users/analytics — admin/doctor: appointment trends for last 6 months
+exports.getAnalytics = async (req, res) => {
+  try {
+    const months = 6;
+    const now = new Date();
+    const labels = [];
+    const appointmentCounts = [];
+    const patientCounts = [];
+
+    for (let i = months - 1; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end   = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+      labels.push(start.toLocaleString('default', { month: 'short', year: '2-digit' }));
+
+      const apptQuery = { date: { $gte: start, $lte: end } };
+      if (req.user.role === 'doctor') apptQuery.doctor = req.user._id;
+
+      const [appts, patients] = await Promise.all([
+        Appointment.countDocuments(apptQuery),
+        User.countDocuments({ role: 'patient', createdAt: { $gte: start, $lte: end } }),
+      ]);
+      appointmentCounts.push(appts);
+      patientCounts.push(patients);
+    }
+
+    res.json({ success: true, labels, appointmentCounts, patientCounts });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

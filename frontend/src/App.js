@@ -18,6 +18,7 @@ import Profile from './pages/Profile';
 import Vitals from './pages/Vitals';
 import Timeline from './pages/Timeline';
 import AuditLogs from './pages/AuditLogs';
+import BloodBank from './pages/BloodBank';
 import Layout from './components/Layout';
 
 // Role-based auth guard
@@ -116,6 +117,8 @@ export default function App() {
           } />
 
           <Route path="profile" element={<Profile />} />
+
+          <Route path="blood-bank" element={<BloodBank />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" />} />

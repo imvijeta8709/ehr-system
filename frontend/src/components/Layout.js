@@ -87,6 +87,8 @@ export default function Layout() {
           <NavLink to="/vitals"><i className="bi bi-activity" />Vitals</NavLink>
         )}
 
+        <NavLink to="/blood-bank"><i className="bi bi-droplet-half" />Blood Bank</NavLink>
+
         {canDo('timeline', 'view') && user?.role === 'patient' && (
           <NavLink to="/timeline"><i className="bi bi-clock-history" />My Timeline</NavLink>
         )}
