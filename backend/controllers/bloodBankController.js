@@ -1,8 +1,9 @@
-const BloodRequest  = require('../models/BloodRequest');
-const Donor         = require('../models/Donor');
+const BloodRequest   = require('../models/BloodRequest');
+const Donor          = require('../models/Donor');
 const BloodInventory = require('../models/BloodInventory');
-const Notification  = require('../models/Notification');
-const AuditLog      = require('../models/AuditLog');
+const Notification   = require('../models/Notification');
+const AuditLog       = require('../models/AuditLog');
+const { getConfig, calcBloodTotal } = require('../utils/billingService');
 
 // Blood group compatibility map (who can receive from whom)
 const COMPATIBLE = {
@@ -84,38 +85,28 @@ exports.updateRequest = async (req, res) => {
 
     const prevStatus = request.status;
 
-    // ── Approve: atomically deduct inventory ──────────────────────
+    // ── Approve: validate inventory and calculate billing ─────────
     if (status === 'approved' && prevStatus !== 'approved') {
-      // Use findOneAndUpdate with $gte condition — atomic, race-condition-safe
-      const inv = await BloodInventory.findOneAndUpdate(
-        { bloodGroup: request.bloodGroup, units: { $gte: request.units } },
-        { $inc: { units: -request.units }, lastUpdatedBy: req.user._id },
-        { new: true }
-      );
-      if (!inv) {
-        // Either no inventory doc or insufficient units
-        const current = await BloodInventory.findOne({ bloodGroup: request.bloodGroup });
-        const available = current?.units ?? 0;
+      // Check stock without deducting — deduction happens after payment
+      const inv = await BloodInventory.findOne({ bloodGroup: request.bloodGroup });
+      const available = inv?.units ?? 0;
+      if (available < request.units) {
         return res.status(400).json({
           success: false,
           message: `Insufficient stock. Only ${available} unit(s) of ${request.bloodGroup} available, but ${request.units} requested.`,
         });
       }
+
+      // Calculate billing
+      const config = await getConfig('blood');
+      request.pricePerUnit    = config.pricePerUnit;
+      request.emergencyCharge = config.emergencyCharge;
+      request.totalAmount     = calcBloodTotal(request.units, config.pricePerUnit, config.emergencyCharge);
+      request.paymentStatus   = 'pending';
     }
 
-    // ── Reject after approved: restore units ──────────────────────
-    if (status === 'rejected' && prevStatus === 'approved') {
-      await BloodInventory.findOneAndUpdate(
-        { bloodGroup: request.bloodGroup },
-        { $inc: { units: request.units }, lastUpdatedBy: req.user._id },
-        { upsert: true }
-      );
-    }
-
-    // ── Fulfill: units already deducted at approval, just mark date ─
-    if (status === 'fulfilled' && prevStatus !== 'fulfilled') {
-      request.fulfilledAt = new Date();
-    }
+    // ── Reject: no inventory change needed (deduction only happens at payment) ─
+    // ── Fulfill: handled by billing payment endpoint ──────────────
 
     request.status    = status || request.status;
     request.adminNote = adminNote !== undefined ? adminNote : request.adminNote;

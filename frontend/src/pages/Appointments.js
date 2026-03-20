@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
 import Spinner from '../components/Spinner';
 import Pagination from '../components/Pagination';
+import BillingCard from '../components/BillingCard';
+import BillingConfigModal from '../components/BillingConfigModal';
 
 const STATUS_COLORS = {
   pending: 'warning text-dark',
@@ -20,6 +22,8 @@ export default function Appointments() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const isSuperAdmin = user?.role === 'superadmin';
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -48,9 +52,16 @@ export default function Appointments() {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h4 className="mb-0">Appointments</h4>
-        <Link to="/appointments/new" className="btn btn-primary btn-sm">
-          <i className="bi bi-plus-lg me-1" />Book Appointment
-        </Link>
+        <div className="d-flex gap-2">
+          {isSuperAdmin && (
+            <button className="btn btn-outline-secondary btn-sm" onClick={() => setShowPricingModal(true)}>
+              <i className="bi bi-gear me-1" />Consultation Pricing
+            </button>
+          )}
+          <Link to="/appointments/new" className="btn btn-primary btn-sm">
+            <i className="bi bi-plus-lg me-1" />Book Appointment
+          </Link>
+        </div>
       </div>
 
       <div className="card mb-3">
@@ -76,12 +87,13 @@ export default function Appointments() {
                   <th>Time</th>
                   <th>Reason</th>
                   <th>Status</th>
+                  <th>Billing</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {appointments.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center text-muted py-3">No appointments found</td></tr>
+                  <tr><td colSpan={7} className="text-center text-muted py-3">No appointments found</td></tr>
                 ) : appointments.map((a) => (
                   <tr key={a._id}>
                     <td>{user?.role === 'patient' ? a.doctor?.name : a.patient?.name}</td>
@@ -92,14 +104,25 @@ export default function Appointments() {
                       <span className={`badge bg-${STATUS_COLORS[a.status]}`}>{a.status}</span>
                     </td>
                     <td>
+                      <BillingCard
+                        type="consultation"
+                        item={a}
+                        canPay={user?.role === 'patient' || isSuperAdmin}
+                        onPaid={fetchAppointments}
+                      />
+                      {a.status !== 'completed' && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                      )}
+                    </td>
+                    <td>
                       {user?.role !== 'patient' && a.status === 'pending' && (
                         <button className="btn btn-sm btn-success me-1" onClick={() => updateStatus(a._id, 'confirmed')}>
                           Confirm
                         </button>
                       )}
-                      {user?.role !== 'patient' && a.status === 'confirmed' && (
+                      {(user?.role === 'doctor' || user?.role === 'superadmin' || user?.role === 'admin') && a.status === 'confirmed' && (
                         <button className="btn btn-sm btn-info me-1" onClick={() => updateStatus(a._id, 'completed')}>
-                          Complete
+                          <i className="bi bi-check2-circle me-1" />Complete
                         </button>
                       )}
                       {a.status !== 'cancelled' && a.status !== 'completed' && (
@@ -118,6 +141,9 @@ export default function Appointments() {
       <div className="mt-3">
         <Pagination page={page} pages={pages} onPageChange={setPage} />
       </div>
+      {showPricingModal && (
+        <BillingConfigModal type="consultation" onClose={() => setShowPricingModal(false)} />
+      )}
     </div>
   );
 }

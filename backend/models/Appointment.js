@@ -14,6 +14,11 @@ const appointmentSchema = new mongoose.Schema(
     },
     notes: { type: String },
     cancelReason: { type: String },
+    // Billing
+    consultationFee: { type: Number, default: 0 },
+    totalAmount:     { type: Number, default: 0 },
+    paymentStatus:   { type: String, enum: ['pending', 'paid'], default: 'pending' },
+    paidAt:          { type: Date },
   },
   { timestamps: true }
 );
