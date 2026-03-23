@@ -203,19 +203,36 @@ export default function RecordDetail() {
         {record.attachments?.length > 0 && (
           <div className="col-12">
             <div className="card">
-              <div className="card-header">Attachments</div>
-              <div className="card-body d-flex flex-wrap gap-2">
-                {record.attachments.map((a, i) => (
-                  <a
-                    key={i}
-                    href={`http://localhost:8000${a.fileUrl}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-outline-secondary btn-sm"
-                  >
-                    <i className="bi bi-paperclip me-1" />{a.filename}
-                  </a>
-                ))}
+              <div className="card-header">Attachments ({record.attachments.length})</div>
+              <div className="card-body">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                  {record.attachments.map((a, i) => {
+                    const url = `http://localhost:8000${a.fileUrl}`;
+                    const isPdf   = a.fileType?.includes('pdf');
+                    const isImage = a.fileType?.includes('image');
+                    return (
+                      <div key={i} style={{ border: '1px solid #E5EAF0', borderRadius: 10, overflow: 'hidden', background: '#f8fafc' }}>
+                        {isImage
+                          ? <img src={url} alt={a.filename} style={{ width: '100%', height: 100, objectFit: 'cover' }} />
+                          : <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <i className={`bi ${isPdf ? 'bi-file-earmark-pdf' : 'bi-file-earmark'}`} style={{ fontSize: '2.5rem', color: isPdf ? '#ef4444' : '#6B7280' }} />
+                            </div>
+                        }
+                        <div style={{ padding: '0.5rem' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1F2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename}</div>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                            <a href={url} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-primary" style={{ flex: 1, fontSize: '0.72rem', padding: '2px 0' }}>
+                              <i className="bi bi-eye me-1" />View
+                            </a>
+                            <a href={url} download={a.filename} className="btn btn-sm btn-outline-secondary" style={{ flex: 1, fontSize: '0.72rem', padding: '2px 0' }}>
+                              <i className="bi bi-download me-1" />Save
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

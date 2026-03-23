@@ -98,9 +98,29 @@ exports.updateAppointment = async (req, res) => {
       .populate('doctor', 'name email specialization');
 
     // Generate billing when appointment is completed
+    // Doctor can pass consultationFee directly; fallback to billing config
     if (req.body.status === 'completed' && appointment.status !== 'completed') {
-      const config = await getConfig('consultation');
-      const fee    = config.consultationFee;
+      let fee;
+      if (req.body.consultationFee !== undefined && Number(req.body.consultationFee) > 0) {
+        fee = Number(req.body.consultationFee);
+      } else {
+        const config = await getConfig('consultation');
+        fee = config.consultationFee;
+      }
+      updated.consultationFee = fee;
+      updated.totalAmount     = calcConsultationTotal(fee);
+      updated.paymentStatus   = 'pending';
+      await updated.save();
+    }
+
+    // Allow doctor to update fee on already-completed unpaid appointments
+    if (
+      appointment.status === 'completed' &&
+      req.body.consultationFee !== undefined &&
+      Number(req.body.consultationFee) > 0 &&
+      appointment.paymentStatus !== 'paid'
+    ) {
+      const fee = Number(req.body.consultationFee);
       updated.consultationFee = fee;
       updated.totalAmount     = calcConsultationTotal(fee);
       updated.paymentStatus   = 'pending';

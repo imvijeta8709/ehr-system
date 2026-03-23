@@ -3,96 +3,105 @@ import api from '../utils/api';
 import { toast } from 'react-toastify';
 
 /**
- * Reusable billing card — shows bill details and a Pay Now button.
+ * BillingCard — shows charge details and a Stripe "Pay Now" button.
  *
  * Props:
- *   type        : 'blood' | 'consultation'
- *   item        : the BloodRequest or Appointment object
- *   onPaid      : callback after successful payment
- *   canPay      : boolean — whether the current user can pay
+ *   type   : 'blood' | 'consultation'
+ *   item   : BloodRequest or Appointment object
+ *   canPay : boolean — whether the current user can pay
+ *   onPaid : callback after successful payment verification
  */
-export default function BillingCard({ type, item, onPaid, canPay }) {
-  const [paying, setPaying] = useState(false);
+export default function BillingCard({ type, item, canPay, onPaid }) {
+  const [loading, setLoading] = useState(false);
 
   if (!item) return null;
 
-  const isPaid   = item.paymentStatus === 'paid';
-  const hasBill  = item.totalAmount > 0 || item.paymentStatus;
+  const isPaid         = item.paymentStatus === 'paid';
+  const hasValidCharge = item.totalAmount && item.totalAmount > 0;
 
-  // Only show billing card when there's something to show
-  const showForBlood        = type === 'blood'        && (item.status === 'approved' || item.status === 'fulfilled');
+  // Visibility rules
+  const showForBlood        = type === 'blood'        && item.status === 'approved';
   const showForConsultation = type === 'consultation' && item.status === 'completed';
   if (!showForBlood && !showForConsultation) return null;
 
+  // Pay button conditions: approved/completed + charge exists + not paid + user can pay
+  const isPaymentEligible = hasValidCharge && !isPaid && canPay;
+
   const handlePay = async () => {
-    if (!window.confirm(`Confirm payment of $${item.totalAmount?.toFixed(2)}?`)) return;
-    setPaying(true);
+    setLoading(true);
     try {
       const endpoint =
         type === 'blood'
-          ? `/billing/blood/${item._id}/pay`
-          : `/billing/appointment/${item._id}/pay`;
-      await api.post(endpoint);
-      toast.success('Payment successful');
-      onPaid && onPaid();
+          ? `/stripe/blood/${item._id}/checkout`
+          : `/stripe/appointment/${item._id}/checkout`;
+
+      const res = await api.post(endpoint);
+      // Redirect to Stripe hosted checkout page
+      window.location.href = res.data.url;
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Payment failed');
-    } finally {
-      setPaying(false);
+      toast.error(err.response?.data?.message || 'Failed to initiate payment');
+      setLoading(false);
     }
   };
 
   return (
     <div
       style={{
-        marginTop: 8,
-        padding: '10px 14px',
+        padding: '8px 12px',
         borderRadius: 8,
-        background: isPaid ? '#f0fdf4' : '#fffbeb',
-        border: `1px solid ${isPaid ? '#bbf7d0' : '#fde68a'}`,
+        background: isPaid ? '#f0fdf4' : hasValidCharge ? '#fffbeb' : '#f3f4f6',
+        border: `1px solid ${isPaid ? '#bbf7d0' : hasValidCharge ? '#fde68a' : '#d1d5db'}`,
         fontSize: '0.8rem',
+        minWidth: 160,
       }}
     >
       <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        {/* Charge details */}
         <div>
-          {type === 'blood' ? (
+          {hasValidCharge ? (
             <>
-              <span style={{ color: 'var(--text-muted)' }}>
-                {item.units} unit(s) × ${item.pricePerUnit?.toFixed(2) ?? '0.00'}
-                {item.emergencyCharge > 0 && ` + $${item.emergencyCharge?.toFixed(2)} service charge`}
-              </span>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: 2 }}>
-                Total: ${item.totalAmount?.toFixed(2) ?? '0.00'}
+              {type === 'blood' && (
+                <div style={{ color: 'var(--text-muted)' }}>
+                  {item.units} unit(s) &times; ${item.pricePerUnit?.toFixed(2) ?? '0.00'}
+                  {item.emergencyCharge > 0 && ` + $${item.emergencyCharge?.toFixed(2)} service`}
+                </div>
+              )}
+              {type === 'consultation' && (
+                <div style={{ color: 'var(--text-muted)' }}>Consultation fee</div>
+              )}
+              <div style={{ fontWeight: 700, fontSize: '0.875rem', marginTop: 2 }}>
+                Total: ${item.totalAmount?.toFixed(2)}
               </div>
             </>
           ) : (
-            <>
-              <span style={{ color: 'var(--text-muted)' }}>
-                Consultation fee
-              </span>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', marginTop: 2 }}>
-                Total: ${item.totalAmount?.toFixed(2) ?? item.consultationFee?.toFixed(2) ?? '0.00'}
-              </div>
-            </>
+            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              {type === 'blood' ? 'Awaiting pricing from admin' : 'Awaiting fee from doctor'}
+            </span>
           )}
         </div>
 
-        <div className="d-flex align-items-center gap-2">
-          <span
-            className={`badge ${isPaid ? 'bg-success' : 'bg-warning text-dark'}`}
-            style={{ fontSize: '0.75rem' }}
-          >
-            {isPaid ? 'Paid' : 'Pending'}
-          </span>
+        {/* Status badge + Pay button */}
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          {isPaid ? (
+            <span className="badge bg-success" style={{ fontSize: '0.72rem' }}>
+              <i className="bi bi-check-circle me-1" />Paid
+            </span>
+          ) : hasValidCharge ? (
+            <span className="badge bg-warning text-dark" style={{ fontSize: '0.72rem' }}>
+              <i className="bi bi-clock me-1" />Pending
+            </span>
+          ) : (
+            <span className="badge bg-secondary" style={{ fontSize: '0.72rem' }}>No Charge</span>
+          )}
 
-          {!isPaid && canPay && (
+          {isPaymentEligible && (
             <button
               className="btn btn-sm btn-primary"
-              style={{ fontSize: '0.75rem', padding: '3px 10px' }}
-              disabled={paying}
+              style={{ fontSize: '0.72rem', padding: '3px 10px', whiteSpace: 'nowrap' }}
+              disabled={loading}
               onClick={handlePay}
             >
-              {paying
+              {loading
                 ? <span className="spinner-border spinner-border-sm me-1" />
                 : <i className="bi bi-credit-card me-1" />}
               Pay Now

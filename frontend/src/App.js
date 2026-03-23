@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { usePermissions } from './context/PermissionsContext';
 
+import LandingPage from './pages/LandingPage';
+import DonorRegister from './pages/DonorRegister';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import DoctorDashboard from './pages/DoctorDashboard';
@@ -19,6 +21,12 @@ import Vitals from './pages/Vitals';
 import Timeline from './pages/Timeline';
 import AuditLogs from './pages/AuditLogs';
 import BloodBank from './pages/BloodBank';
+import Documents from './pages/Documents';
+import Notifications from './pages/Notifications';
+import ForgotPassword from './pages/ForgotPassword';
+import DoctorAvailability from './pages/DoctorAvailability';
+import SymptomCheckerPage from './pages/SymptomCheckerPage';
+import BillingHistory from './pages/BillingHistory';
 import Layout from './components/Layout';
 
 // Role-based auth guard
@@ -26,7 +34,7 @@ const PrivateRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
   if (loading) return <div className="d-flex justify-content-center mt-5"><div className="spinner-border" /></div>;
   if (!user) return <Navigate to="/login" />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/app/dashboard" />;
   return children;
 };
 
@@ -36,7 +44,7 @@ const FeatureRoute = ({ children, feature }) => {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" />;
   if (loading) return null;
-  if (!canDo(feature, 'view')) return <Navigate to="/dashboard" />;
+  if (!canDo(feature, 'view')) return <Navigate to="/app/dashboard" />;
   return children;
 };
 
@@ -52,11 +60,14 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login"    element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/"         element={<LandingPage />} />
+        <Route path="/login"           element={<Login />} />
+        <Route path="/register"        element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/donate"          element={<DonorRegister />} />
 
-        <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-          <Route index element={<Navigate to="/dashboard" />} />
+        <Route path="/app" element={<PrivateRoute><Layout /></PrivateRoute>}>
+          <Route index element={<Navigate to="/app/dashboard" />} />
 
           <Route path="dashboard" element={getDashboard()} />
 
@@ -119,9 +130,21 @@ export default function App() {
           <Route path="profile" element={<Profile />} />
 
           <Route path="blood-bank" element={<BloodBank />} />
+
+          <Route path="documents" element={<Documents />} />
+
+          <Route path="notifications" element={<Notifications />} />
+
+          <Route path="availability" element={
+            <PrivateRoute roles={['doctor', 'admin', 'superadmin']}><DoctorAvailability /></PrivateRoute>
+          } />
+
+          <Route path="symptom-checker" element={<SymptomCheckerPage />} />
+
+          <Route path="billing" element={<BillingHistory />} />
         </Route>
 
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+        <Route path="*" element={<Navigate to="/app/dashboard" />} />
       </Routes>
     </BrowserRouter>
   );

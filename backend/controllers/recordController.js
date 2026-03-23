@@ -130,24 +130,87 @@ exports.deleteRecord = async (req, res) => {
   }
 };
 
-// GET /api/records/timeline/:patientId — full patient history timeline
+// GET /api/records/timeline/:patientId — full patient activity timeline
 exports.getTimeline = async (req, res) => {
   try {
     const patientId = req.user.role === 'patient' ? req.user._id : req.params.patientId;
 
-    const records = await Record.find({ patient: patientId, status: 'active' })
-      .populate('doctor', 'name specialization')
-      .sort({ visitDate: -1 });
-
-    const Vitals = require('../models/Vitals');
+    const Vitals      = require('../models/Vitals');
     const Appointment = require('../models/Appointment');
+    const BloodRequest = require('../models/BloodRequest');
 
-    const [vitals, appointments] = await Promise.all([
-      Vitals.find({ patient: patientId }).populate('doctor', 'name').sort({ recordedAt: -1 }).limit(20),
-      Appointment.find({ patient: patientId }).populate('doctor', 'name specialization').sort({ date: -1 }).limit(20),
+    const [records, vitals, appointments, bloodRequests] = await Promise.all([
+      Record.find({ patient: patientId, status: 'active', _docStore: { $ne: true } })
+        .populate('doctor', 'name specialization')
+        .sort({ visitDate: -1 }),
+
+      Vitals.find({ patient: patientId })
+        .populate('doctor', 'name')
+        .sort({ recordedAt: -1 })
+        .limit(30),
+
+      Appointment.find({ patient: patientId })
+        .populate('doctor', 'name specialization')
+        .sort({ date: -1 })
+        .limit(50),
+
+      BloodRequest.find({ patient: patientId })
+        .sort({ createdAt: -1 })
+        .limit(20),
     ]);
 
-    res.json({ success: true, records, vitals, appointments });
+    // Build unified events array
+    const events = [
+      ...records.map(r => ({
+        type: 'record',
+        date: r.visitDate,
+        data: r,
+      })),
+      ...vitals.map(v => ({
+        type: 'vitals',
+        date: v.recordedAt,
+        data: v,
+      })),
+      ...appointments.map(a => ({
+        type: 'appointment',
+        date: a.date,
+        data: a,
+        // payment sub-event
+        ...(a.paymentStatus === 'paid' ? { paymentDate: a.paidAt } : {}),
+      })),
+      ...bloodRequests.map(b => ({
+        type: 'blood_request',
+        date: b.createdAt,
+        data: b,
+      })),
+      // Payment events from paid appointments
+      ...appointments
+        .filter(a => a.paymentStatus === 'paid' && a.paidAt)
+        .map(a => ({
+          type: 'payment',
+          date: a.paidAt,
+          data: { ...a.toObject(), paymentType: 'consultation', amount: a.totalAmount },
+        })),
+      // Payment events from paid blood requests
+      ...bloodRequests
+        .filter(b => b.paymentStatus === 'paid' && b.paidAt)
+        .map(b => ({
+          type: 'payment',
+          date: b.paidAt,
+          data: { ...b.toObject(), paymentType: 'blood', amount: b.totalAmount },
+        })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Summary counts
+    const summary = {
+      totalRecords:       records.length,
+      totalAppointments:  appointments.length,
+      totalVitals:        vitals.length,
+      totalBloodRequests: bloodRequests.length,
+      totalPayments:      events.filter(e => e.type === 'payment').length,
+    };
+
+    res.json({ success: true, events, summary });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

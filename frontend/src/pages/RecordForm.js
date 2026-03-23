@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { toast } from 'react-toastify';
 import Spinner from '../components/Spinner';
+import SymptomChecker from '../components/SymptomChecker';
 
 const emptyPrescription = { medication: '', dosage: '', frequency: '', duration: '' };
 
@@ -117,6 +118,7 @@ export default function RecordForm() {
               <div className="col-md-6">
                 <label className="form-label">Symptoms</label>
                 <textarea className="form-control" rows={3} value={form.symptoms} onChange={set('symptoms')} />
+                <SymptomChecker symptomsText={form.symptoms} />
               </div>
               <div className="col-md-6">
                 <label className="form-label">Notes</label>

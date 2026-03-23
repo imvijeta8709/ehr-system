@@ -1,88 +1,358 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
 
+// ── Event type config ────────────────────────────────────────────
+const TYPE_CONFIG = {
+  record: {
+    label: 'Medical Record',
+    icon: 'bi-file-earmark-medical-fill',
+    color: '#2A7FFF',
+    bg: '#e8f1ff',
+    accent: '#2A7FFF',
+  },
+  appointment: {
+    label: 'Appointment',
+    icon: 'bi-calendar-check-fill',
+    color: '#00a88c',
+    bg: '#e0faf5',
+    accent: '#00C9A7',
+  },
+  vitals: {
+    label: 'Vitals',
+    icon: 'bi-activity',
+    color: '#d97706',
+    bg: '#fff8e6',
+    accent: '#f59e0b',
+  },
+  blood_request: {
+    label: 'Blood Request',
+    icon: 'bi-droplet-fill',
+    color: '#dc2626',
+    bg: '#fff0f0',
+    accent: '#ef4444',
+  },
+  payment: {
+    label: 'Payment',
+    icon: 'bi-currency-rupee',
+    color: '#7c3aed',
+    bg: '#f3f0ff',
+    accent: '#7c3aed',
+  },
+};
+
+const ALL_TYPES = Object.keys(TYPE_CONFIG);
+
+// ── Helpers ──────────────────────────────────────────────────────
+function formatDate(d) {
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function formatTime(d) {
+  return new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+function groupByDate(events) {
+  const groups = {};
+  events.forEach(ev => {
+    const key = new Date(ev.date).toDateString();
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(ev);
+  });
+  return Object.entries(groups); // [['Mon Jan 01 2024', [...events]], ...]
+}
+
+// ── Summary stat card ────────────────────────────────────────────
+function SummaryCard({ label, value, icon, color, bg }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5EAF0', borderRadius: 12, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: 14, borderTop: `3px solid ${color}` }}>
+      <div style={{ width: 44, height: 44, borderRadius: 11, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <i className={`bi ${icon}`} style={{ color, fontSize: '1.2rem' }} />
+      </div>
+      <div>
+        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1F2937', lineHeight: 1 }}>{value}</div>
+        <div style={{ fontSize: '0.72rem', color: '#6B7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 3 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Event card content ───────────────────────────────────────────
+function EventContent({ event }) {
+  const { type, data } = event;
+
+  if (type === 'record') return (
+    <div>
+      <div style={{ fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>{data.diagnosis}</div>
+      {data.doctor && (
+        <div style={{ fontSize: '0.8rem', color: '#6B7280', marginBottom: 6 }}>
+          <i className="bi bi-person-badge me-1" />Dr. {data.doctor.name}
+          {data.doctor.specialization && ` · ${data.doctor.specialization}`}
+        </div>
+      )}
+      {data.symptoms && (
+        <div style={{ fontSize: '0.8rem', color: '#6B7280', marginBottom: 4 }}>
+          <i className="bi bi-clipboard-pulse me-1" />Symptoms: {data.symptoms}
+        </div>
+      )}
+      {data.prescriptions?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
+          {data.prescriptions.map((p, i) => (
+            <span key={i} style={{ background: '#e8f1ff', color: '#1d4ed8', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 99 }}>
+              <i className="bi bi-capsule me-1" />{p.medication}
+            </span>
+          ))}
+        </div>
+      )}
+      {data.followUpDate && (
+        <div style={{ fontSize: '0.78rem', color: '#d97706', marginTop: 4 }}>
+          <i className="bi bi-calendar-event me-1" />Follow-up: {formatDate(data.followUpDate)}
+        </div>
+      )}
+      <Link to={`/app/records/${data._id}`} style={{ fontSize: '0.78rem', color: '#2A7FFF', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+        View Record <i className="bi bi-arrow-right" />
+      </Link>
+    </div>
+  );
+
+  if (type === 'appointment') {
+    const statusColors = {
+      pending:   { bg: '#fef3c7', color: '#92400e' },
+      confirmed: { bg: '#e8f1ff', color: '#1d4ed8' },
+      completed: { bg: '#e0faf5', color: '#065f46' },
+      cancelled: { bg: '#fee2e2', color: '#991b1b' },
+    };
+    const sc = statusColors[data.status] || statusColors.pending;
+    return (
+      <div>
+        <div style={{ fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>{data.reason}</div>
+        {data.doctor && (
+          <div style={{ fontSize: '0.8rem', color: '#6B7280', marginBottom: 6 }}>
+            <i className="bi bi-person-badge me-1" />Dr. {data.doctor.name}
+            {data.doctor.specialization && ` · ${data.doctor.specialization}`}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {data.timeSlot && (
+            <span style={{ fontSize: '0.78rem', color: '#6B7280' }}>
+              <i className="bi bi-clock me-1" />{data.timeSlot}
+            </span>
+          )}
+          <span style={{ background: sc.bg, color: sc.color, fontSize: '0.72rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99, textTransform: 'capitalize' }}>
+            {data.status}
+          </span>
+          {data.paymentStatus === 'paid' && (
+            <span style={{ background: '#f3f0ff', color: '#7c3aed', fontSize: '0.72rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>
+              <i className="bi bi-check-circle me-1" />Paid ₹{data.totalAmount?.toLocaleString('en-IN')}
+            </span>
+          )}
+        </div>
+        {data.notes && (
+          <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 6, fontStyle: 'italic' }}>{data.notes}</div>
+        )}
+      </div>
+    );
+  }
+
+  if (type === 'vitals') return (
+    <div>
+      <div style={{ fontWeight: 600, color: '#1F2937', marginBottom: 8, fontSize: '0.875rem' }}>Vitals Recorded</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {data.bloodPressureSystolic && (
+          <span style={{ background: '#fff0f0', color: '#dc2626', fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid #fecaca' }}>
+            <i className="bi bi-heart-pulse me-1" />BP {data.bloodPressureSystolic}/{data.bloodPressureDiastolic} mmHg
+          </span>
+        )}
+        {data.heartRate && (
+          <span style={{ background: '#fff8e6', color: '#d97706', fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid #fde68a' }}>
+            <i className="bi bi-activity me-1" />{data.heartRate} bpm
+          </span>
+        )}
+        {data.bloodSugar && (
+          <span style={{ background: '#e8f1ff', color: '#1d4ed8', fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid #bfdbfe' }}>
+            <i className="bi bi-droplet me-1" />{data.bloodSugar} mg/dL ({data.bloodSugarType})
+          </span>
+        )}
+        {data.temperature && (
+          <span style={{ background: '#fff0f0', color: '#dc2626', fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid #fecaca' }}>
+            <i className="bi bi-thermometer me-1" />{data.temperature}°C
+          </span>
+        )}
+        {data.oxygenSaturation && (
+          <span style={{ background: '#e0faf5', color: '#065f46', fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid #a7f3d0' }}>
+            <i className="bi bi-lungs me-1" />SpO₂ {data.oxygenSaturation}%
+          </span>
+        )}
+        {data.weight && (
+          <span style={{ background: '#f3f0ff', color: '#7c3aed', fontSize: '0.75rem', fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid #ddd6fe' }}>
+            {data.weight} kg
+          </span>
+        )}
+      </div>
+      {data.doctor && (
+        <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginTop: 6 }}>
+          <i className="bi bi-person-badge me-1" />Recorded by Dr. {data.doctor.name}
+        </div>
+      )}
+      {data.notes && (
+        <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 4, fontStyle: 'italic' }}>{data.notes}</div>
+      )}
+    </div>
+  );
+
+  if (type === 'blood_request') {
+    const urgencyColors = {
+      normal:   { bg: '#f3f4f6', color: '#374151' },
+      urgent:   { bg: '#fff8e6', color: '#92400e' },
+      critical: { bg: '#fff0f0', color: '#991b1b' },
+    };
+    const uc = urgencyColors[data.urgency] || urgencyColors.normal;
+    const statusColors = {
+      pending:   { bg: '#fef3c7', color: '#92400e' },
+      approved:  { bg: '#e8f1ff', color: '#1d4ed8' },
+      fulfilled: { bg: '#e0faf5', color: '#065f46' },
+      rejected:  { bg: '#fee2e2', color: '#991b1b' },
+    };
+    const sc = statusColors[data.status] || statusColors.pending;
+    return (
+      <div>
+        <div style={{ fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>
+          Blood Request — {data.units} unit(s) of{' '}
+          <span style={{ background: '#fff0f0', color: '#dc2626', fontWeight: 800, padding: '1px 8px', borderRadius: 6, border: '1px solid #fecaca' }}>{data.bloodGroup}</span>
+        </div>
+        <div style={{ fontSize: '0.8rem', color: '#6B7280', marginBottom: 6 }}>
+          <i className="bi bi-hospital me-1" />{data.hospital} · {data.location}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ background: uc.bg, color: uc.color, fontSize: '0.72rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99, textTransform: 'capitalize' }}>
+            <i className="bi bi-exclamation-circle me-1" />{data.urgency}
+          </span>
+          <span style={{ background: sc.bg, color: sc.color, fontSize: '0.72rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99, textTransform: 'capitalize' }}>
+            {data.status}
+          </span>
+          {data.paymentStatus === 'paid' && (
+            <span style={{ background: '#f3f0ff', color: '#7c3aed', fontSize: '0.72rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>
+              <i className="bi bi-check-circle me-1" />Paid ₹{data.totalAmount?.toLocaleString('en-IN')}
+            </span>
+          )}
+        </div>
+        {data.reason && (
+          <div style={{ fontSize: '0.78rem', color: '#6B7280', marginTop: 6 }}>{data.reason}</div>
+        )}
+      </div>
+    );
+  }
+
+  if (type === 'payment') return (
+    <div>
+      <div style={{ fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>
+        Payment Confirmed — ₹{data.amount?.toLocaleString('en-IN')}
+      </div>
+      <div style={{ fontSize: '0.8rem', color: '#6B7280', marginBottom: 6 }}>
+        {data.paymentType === 'consultation'
+          ? <><i className="bi bi-calendar-check me-1" />Consultation fee</>
+          : <><i className="bi bi-droplet me-1" />Blood bank payment</>
+        }
+      </div>
+      <span style={{ background: '#e0faf5', color: '#065f46', fontSize: '0.72rem', fontWeight: 700, padding: '2px 9px', borderRadius: 99 }}>
+        <i className="bi bi-check-circle-fill me-1" />Paid
+      </span>
+    </div>
+  );
+
+  return null;
+}
+
+// ── Main Component ───────────────────────────────────────────────
 export default function Timeline() {
   const { user } = useAuth();
-  const { patientId } = useParams(); // optional — for doctor viewing a patient
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [patientInfo, setPatientInfo] = useState(null);
-
+  const { patientId } = useParams();
   const pid = patientId || user?._id || user?.id;
 
+  const [events, setEvents]         = useState([]);
+  const [summary, setSummary]       = useState(null);
+  const [patientInfo, setPatient]   = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [activeFilter, setFilter]   = useState('all');
+  const [search, setSearch]         = useState('');
+
+  const fetchTimeline = useCallback(() => {
+    if (!pid) return;
+    setLoading(true);
+    api.get(`/records/timeline/${pid}`)
+      .then(r => { setEvents(r.data.events || []); setSummary(r.data.summary); })
+      .finally(() => setLoading(false));
+  }, [pid]);
+
   useEffect(() => {
-    const endpoint = `/records/timeline/${pid}`;
-    api.get(endpoint).then((r) => setData(r.data)).finally(() => setLoading(false));
+    fetchTimeline();
     if (patientId) {
-      api.get(`/users/${patientId}`).then((r) => setPatientInfo(r.data.user)).catch(() => {});
+      api.get(`/users/${patientId}`).then(r => setPatient(r.data.user)).catch(() => {});
     }
-  }, [pid, patientId]);
+  }, [fetchTimeline, patientId]);
 
-  if (loading) return <Spinner />;
-  if (!data) return <div className="alert alert-danger">Could not load timeline</div>;
+  // Filter + search
+  const filtered = events.filter(ev => {
+    if (activeFilter !== 'all' && ev.type !== activeFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const d = ev.data;
+      const text = [
+        d.diagnosis, d.reason, d.hospital, d.bloodGroup,
+        d.doctor?.name, d.paymentType,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!text.includes(q)) return false;
+    }
+    return true;
+  });
 
-  // Merge all events into a single sorted timeline
-  const events = [
-    ...data.records.map((r) => ({ type: 'record', date: new Date(r.visitDate), data: r })),
-    ...data.appointments.map((a) => ({ type: 'appointment', date: new Date(a.date), data: a })),
-    ...data.vitals.map((v) => ({ type: 'vitals', date: new Date(v.recordedAt), data: v })),
-  ].sort((a, b) => b.date - a.date);
-
-  const typeConfig = {
-    record: { icon: 'bi-file-medical', color: 'primary', label: 'Medical Record' },
-    appointment: { icon: 'bi-calendar-check', color: 'success', label: 'Appointment' },
-    vitals: { icon: 'bi-activity', color: 'warning', label: 'Vitals' },
-  };
-
-  const patient = patientInfo || user;
+  const grouped = groupByDate(filtered);
+  const patient = patientInfo || (user?.role === 'patient' ? user : null);
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h4 className="mb-0">
-          {patientId ? `${patientInfo?.name || 'Patient'}'s Timeline` : 'My Medical Timeline'}
-        </h4>
-        {patientId && <Link to={-1} className="btn btn-sm btn-outline-secondary">Back</Link>}
+      {/* ── Header ── */}
+      <div className="page-header">
+        <div>
+          <h4>{patientId ? `${patientInfo?.name || 'Patient'}'s Timeline` : 'My Activity Timeline'}</h4>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>
+            Complete medical history and activity log
+          </p>
+        </div>
+        {patientId && (
+          <Link to={-1} className="btn btn-outline-secondary btn-sm">
+            <i className="bi bi-arrow-left me-1" />Back
+          </Link>
+        )}
       </div>
 
-      {/* Patient summary card */}
+      {/* ── Patient info strip ── */}
       {patient && (
-        <div className="card mb-4">
-          <div className="card-body">
-            <div className="row g-3">
-              <div className="col-md-3">
-                <div className="text-muted small">Name</div>
-                <div className="fw-semibold">{patient.name}</div>
+        <div className="card mb-4" style={{ borderLeft: '4px solid var(--primary)' }}>
+          <div className="card-body py-3">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg,#2A7FFF,#00C9A7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '1.1rem', flexShrink: 0 }}>
+                {patient.name?.[0]?.toUpperCase()}
               </div>
-              <div className="col-md-2">
-                <div className="text-muted small">Age</div>
-                <div className="fw-semibold">{patient.age || '—'}</div>
-              </div>
-              <div className="col-md-2">
-                <div className="text-muted small">Blood Group</div>
-                <div className="fw-semibold">{patient.bloodGroup || '—'}</div>
-              </div>
-              <div className="col-md-2">
-                <div className="text-muted small">Gender</div>
-                <div className="fw-semibold">{patient.gender || '—'}</div>
-              </div>
-              {patient.allergies?.length > 0 && (
-                <div className="col-md-3">
-                  <div className="text-muted small">Allergies</div>
-                  <div>{patient.allergies.map((a) => (
-                    <span key={a} className="badge bg-danger me-1">{a}</span>
-                  ))}</div>
+              {[
+                { label: 'Name',        value: patient.name },
+                { label: 'Age',         value: patient.age ? `${patient.age} yrs` : '—' },
+                { label: 'Blood Group', value: patient.bloodGroup || '—' },
+                { label: 'Gender',      value: patient.gender || '—' },
+              ].map(item => (
+                <div key={item.label}>
+                  <div style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</div>
+                  <div style={{ fontWeight: 600, color: '#1F2937', fontSize: '0.9rem' }}>{item.value}</div>
                 </div>
-              )}
-              {patient.chronicDiseases?.length > 0 && (
-                <div className="col-md-3">
-                  <div className="text-muted small">Chronic Diseases</div>
-                  <div>{patient.chronicDiseases.map((d) => (
-                    <span key={d} className="badge bg-warning text-dark me-1">{d}</span>
-                  ))}</div>
+              ))}
+              {patient.allergies?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: '#9CA3AF', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Allergies</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {patient.allergies.map(a => (
+                      <span key={a} style={{ background: '#fff0f0', color: '#dc2626', fontSize: '0.72rem', fontWeight: 600, padding: '1px 8px', borderRadius: 99, border: '1px solid #fecaca' }}>{a}</span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -90,118 +360,114 @@ export default function Timeline() {
         </div>
       )}
 
-      {/* Stats */}
-      <div className="row g-3 mb-4">
-        <div className="col-sm-4">
-          <div className="card border-start border-primary border-4">
-            <div className="card-body d-flex justify-content-between align-items-center">
-              <div>
-                <div className="text-muted small">Total Records</div>
-                <div className="fs-3 fw-bold">{data.records.length}</div>
-              </div>
-              <i className="bi bi-file-medical fs-2 text-primary opacity-50" />
-            </div>
-          </div>
+      {/* ── Summary cards ── */}
+      {summary && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.875rem', marginBottom: '1.5rem' }}>
+          <SummaryCard label="Records"      value={summary.totalRecords}       icon="bi-file-earmark-medical-fill" color="#2A7FFF" bg="#e8f1ff" />
+          <SummaryCard label="Appointments" value={summary.totalAppointments}  icon="bi-calendar-check-fill"       color="#00a88c" bg="#e0faf5" />
+          <SummaryCard label="Vitals"       value={summary.totalVitals}        icon="bi-activity"                  color="#d97706" bg="#fff8e6" />
+          <SummaryCard label="Blood Req."   value={summary.totalBloodRequests} icon="bi-droplet-fill"              color="#dc2626" bg="#fff0f0" />
+          <SummaryCard label="Payments"     value={summary.totalPayments}      icon="bi-currency-rupee"            color="#7c3aed" bg="#f3f0ff" />
         </div>
-        <div className="col-sm-4">
-          <div className="card border-start border-success border-4">
-            <div className="card-body d-flex justify-content-between align-items-center">
-              <div>
-                <div className="text-muted small">Appointments</div>
-                <div className="fs-3 fw-bold">{data.appointments.length}</div>
-              </div>
-              <i className="bi bi-calendar-check fs-2 text-success opacity-50" />
+      )}
+
+      {/* ── Filter bar ── */}
+      <div className="card mb-4">
+        <div className="card-body py-3">
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Type filters */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={() => setFilter('all')}
+                style={{ background: activeFilter === 'all' ? '#1F2937' : '#f3f4f6', color: activeFilter === 'all' ? '#fff' : '#6B7280', border: 'none', borderRadius: 99, padding: '5px 14px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
+                All ({events.length})
+              </button>
+              {Object.entries(TYPE_CONFIG).map(([key, cfg]) => {
+                const count = events.filter(e => e.type === key).length;
+                if (!count) return null;
+                return (
+                  <button key={key} onClick={() => setFilter(key)}
+                    style={{ background: activeFilter === key ? cfg.color : '#f3f4f6', color: activeFilter === key ? '#fff' : '#6B7280', border: 'none', borderRadius: 99, padding: '5px 14px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>
+                    <i className={`bi ${cfg.icon} me-1`} />{cfg.label} ({count})
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        </div>
-        <div className="col-sm-4">
-          <div className="card border-start border-warning border-4">
-            <div className="card-body d-flex justify-content-between align-items-center">
-              <div>
-                <div className="text-muted small">Vitals Entries</div>
-                <div className="fs-3 fw-bold">{data.vitals.length}</div>
-              </div>
-              <i className="bi bi-activity fs-2 text-warning opacity-50" />
+
+            {/* Search */}
+            <div style={{ marginLeft: 'auto', position: 'relative' }}>
+              <i className="bi bi-search" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF', fontSize: '0.85rem' }} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search activities..."
+                style={{ paddingLeft: 32, paddingRight: 12, paddingTop: 6, paddingBottom: 6, border: '1.5px solid #E5EAF0', borderRadius: 8, fontSize: '0.82rem', color: '#1F2937', outline: 'none', width: 200 }}
+                onFocus={e => e.target.style.borderColor = '#2A7FFF'}
+                onBlur={e => e.target.style.borderColor = '#E5EAF0'}
+              />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Timeline */}
-      {events.length === 0 ? (
-        <div className="text-center text-muted py-5">No history found</div>
+      {/* ── Timeline ── */}
+      {loading ? <Spinner /> : filtered.length === 0 ? (
+        <div className="card">
+          <div className="card-body text-center py-5" style={{ color: 'var(--text-muted)' }}>
+            <i className="bi bi-clock-history d-block mb-2" style={{ fontSize: '2.5rem' }} />
+            {search || activeFilter !== 'all' ? 'No matching activities found.' : 'No activity recorded yet.'}
+          </div>
+        </div>
       ) : (
-        <div className="timeline">
-          {events.map((event, idx) => {
-            const cfg = typeConfig[event.type];
-            return (
-              <div key={idx} className="d-flex gap-3 mb-3">
-                <div className="d-flex flex-column align-items-center">
-                  <div className={`rounded-circle bg-${cfg.color} text-white d-flex align-items-center justify-content-center`}
-                    style={{ width: 40, height: 40, flexShrink: 0 }}>
-                    <i className={`bi ${cfg.icon}`} />
-                  </div>
-                  {idx < events.length - 1 && (
-                    <div style={{ width: 2, flexGrow: 1, background: '#dee2e6', minHeight: 20 }} />
-                  )}
+        <div style={{ position: 'relative' }}>
+          {grouped.map(([dateKey, dayEvents], gi) => (
+            <div key={dateKey}>
+              {/* Date separator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1rem', marginTop: gi > 0 ? '1.5rem' : 0 }}>
+                <div style={{ height: 1, flex: 1, background: '#E5EAF0' }} />
+                <div style={{ background: '#1F2937', color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '4px 14px', borderRadius: 99, whiteSpace: 'nowrap', letterSpacing: '0.04em' }}>
+                  {formatDate(new Date(dateKey))}
                 </div>
-                <div className="card flex-grow-1 mb-0" style={{ marginBottom: 0 }}>
-                  <div className="card-body py-2 px-3">
-                    <div className="d-flex justify-content-between align-items-start">
-                      <div>
-                        <span className={`badge bg-${cfg.color} me-2`}>{cfg.label}</span>
-                        {event.type === 'record' && (
-                          <>
-                            <strong>{event.data.diagnosis}</strong>
-                            <div className="text-muted small">Dr. {event.data.doctor?.name} {event.data.doctor?.specialization ? `· ${event.data.doctor.specialization}` : ''}</div>
-                            {event.data.prescriptions?.length > 0 && (
-                              <div className="small mt-1">
-                                <i className="bi bi-capsule me-1 text-primary" />
-                                {event.data.prescriptions.map((p) => p.medication).join(', ')}
-                              </div>
-                            )}
-                          </>
-                        )}
-                        {event.type === 'appointment' && (
-                          <>
-                            <strong>{event.data.reason}</strong>
-                            <div className="text-muted small">Dr. {event.data.doctor?.name} · {event.data.timeSlot}</div>
-                            <span className={`badge badge-status-${event.data.status} mt-1`}>{event.data.status}</span>
-                          </>
-                        )}
-                        {event.type === 'vitals' && (
-                          <div className="d-flex flex-wrap gap-2 mt-1">
-                            {event.data.bloodPressureSystolic && (
-                              <span className="badge bg-light text-dark border">
-                                BP: {event.data.bloodPressureSystolic}/{event.data.bloodPressureDiastolic}
-                              </span>
-                            )}
-                            {event.data.heartRate && (
-                              <span className="badge bg-light text-dark border">HR: {event.data.heartRate} bpm</span>
-                            )}
-                            {event.data.bloodSugar && (
-                              <span className="badge bg-light text-dark border">Sugar: {event.data.bloodSugar} mg/dL</span>
-                            )}
-                            {event.data.temperature && (
-                              <span className="badge bg-light text-dark border">Temp: {event.data.temperature}°C</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-muted small text-nowrap ms-2">
-                        {event.date.toLocaleDateString()}
-                      </div>
-                    </div>
-                    {event.type === 'record' && (
-                      <Link to={`/records/${event.data._id}`} className="btn btn-link btn-sm p-0 mt-1">
-                        View Record →
-                      </Link>
-                    )}
-                  </div>
-                </div>
+                <div style={{ height: 1, flex: 1, background: '#E5EAF0' }} />
               </div>
-            );
-          })}
+
+              {/* Events for this day */}
+              {dayEvents.map((event, ei) => {
+                const cfg = TYPE_CONFIG[event.type];
+                const isLast = ei === dayEvents.length - 1 && gi === grouped.length - 1;
+                return (
+                  <div key={`${event.type}-${event.data._id}-${ei}`}
+                    style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+
+                    {/* Left: dot + connector */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: cfg.bg, border: `2px solid ${cfg.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 0 0 4px ${cfg.color}18` }}>
+                        <i className={`bi ${cfg.icon}`} style={{ color: cfg.color, fontSize: '1rem' }} />
+                      </div>
+                      {!isLast && (
+                        <div style={{ width: 2, flex: 1, minHeight: 20, background: `linear-gradient(to bottom, ${cfg.color}40, #E5EAF0)`, marginTop: 4 }} />
+                      )}
+                    </div>
+
+                    {/* Right: card */}
+                    <div style={{ flex: 1, background: '#fff', border: `1px solid #E5EAF0`, borderRadius: 12, padding: '1rem 1.25rem', borderLeft: `3px solid ${cfg.color}`, marginBottom: isLast ? 0 : 4 }}>
+                      {/* Card header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ background: cfg.bg, color: cfg.color, fontSize: '0.7rem', fontWeight: 700, padding: '2px 10px', borderRadius: 99, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <i className={`bi ${cfg.icon} me-1`} />{cfg.label}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+                          {formatTime(event.date)}
+                        </span>
+                      </div>
+
+                      {/* Card body */}
+                      <EventContent event={event} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>

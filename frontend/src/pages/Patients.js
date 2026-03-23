@@ -1,30 +1,61 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
-import Spinner from '../components/Spinner';
+import Spinner, { TableSkeleton } from '../components/Spinner';
 import Pagination from '../components/Pagination';
+import SearchFilterBar from '../components/SearchFilterBar';
 import PatientFormModal from '../components/PatientFormModal';
 import PatientViewModal from '../components/PatientViewModal';
 import { usePermissions } from '../context/PermissionsContext';
 
+const BLOOD_GROUPS = ['A+','A-','B+','B-','AB+','AB-','O+','O-'];
+
+const PATIENT_FILTERS = [
+  {
+    key: 'bloodGroup', label: 'Blood Group', type: 'select',
+    options: BLOOD_GROUPS.map(g => ({ value: g, label: g })),
+  },
+  {
+    key: 'gender', label: 'Gender', type: 'select',
+    options: [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }, { value: 'other', label: 'Other' }],
+  },
+  { key: 'ageMin',    label: 'Age (min)',      type: 'number', placeholder: 'e.g. 18', min: 0, max: 120 },
+  { key: 'ageMax',    label: 'Age (max)',      type: 'number', placeholder: 'e.g. 60', min: 0, max: 120 },
+  { key: 'dateFrom',  label: 'Registered From', type: 'date' },
+  { key: 'dateTo',    label: 'Registered To',   type: 'date' },
+  {
+    key: 'sortBy', label: 'Sort By', type: 'select',
+    options: [
+      { value: 'createdAt', label: 'Registration Date' },
+      { value: 'name',      label: 'Name' },
+      { value: 'age',       label: 'Age' },
+    ],
+  },
+  {
+    key: 'sortOrder', label: 'Order', type: 'select',
+    options: [{ value: 'desc', label: 'Newest First' }, { value: 'asc', label: 'Oldest First' }],
+  },
+];
+
 const Avatar = ({ name, size = 32 }) => {
-  const initials = (name || '?').split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  const initials = (name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
       background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff', fontSize: size * 0.35, fontWeight: 700,
-    }}>
-      {initials}
-    </div>
+    }}>{initials}</div>
   );
 };
+
+const INIT_FILTERS = { bloodGroup: '', gender: '', ageMin: '', ageMax: '', dateFrom: '', dateTo: '', sortBy: 'createdAt', sortOrder: 'desc' };
 
 export default function Patients() {
   const { canDo } = usePermissions();
   const [patients, setPatients] = useState([]);
   const [search, setSearch]     = useState('');
+  const [filters, setFilters]   = useState(INIT_FILTERS);
   const [page, setPage]         = useState(1);
   const [pages, setPages]       = useState(1);
   const [total, setTotal]       = useState(0);
@@ -36,24 +67,34 @@ export default function Patients() {
   const fetchPatients = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/users/patients', { params: { search, page, limit: 10 } });
+      const params = { search, page, limit: 10, ...filters };
+      // strip empty values
+      Object.keys(params).forEach(k => { if (params[k] === '') delete params[k]; });
+      const res = await api.get('/users/patients', { params });
       setPatients(res.data.patients);
       setPages(res.data.pages);
       setTotal(res.data.total);
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, filters]);
 
   useEffect(() => { fetchPatients(); }, [fetchPatients]);
 
+  const handleFilterChange = (key, value) => {
+    setFilters(f => ({ ...f, [key]: value }));
+    setPage(1);
+  };
+
+  const handleReset = () => {
+    setSearch('');
+    setFilters(INIT_FILTERS);
+    setPage(1);
+  };
+
   const handleSaved = (savedPatient, isEdit) => {
-    if (isEdit) {
-      setPatients((prev) => prev.map((p) => (p._id === savedPatient._id ? { ...p, ...savedPatient } : p)));
-    } else {
-      setPatients((prev) => [savedPatient, ...prev]);
-      setTotal((t) => t + 1);
-    }
+    if (isEdit) setPatients(prev => prev.map(p => p._id === savedPatient._id ? { ...p, ...savedPatient } : p));
+    else { setPatients(prev => [savedPatient, ...prev]); setTotal(t => t + 1); }
   };
 
   const openAdd  = ()  => { setSelected(null); setFormOpen(true); };
@@ -62,7 +103,6 @@ export default function Patients() {
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <div>
           <h4>Patients</h4>
@@ -77,31 +117,19 @@ export default function Patients() {
         )}
       </div>
 
-      {/* Search bar */}
-      <div className="card mb-3">
-        <div className="card-body py-2">
-          <div className="input-group">
-            <span className="input-group-text" style={{ background: 'var(--bg)', border: '1.5px solid var(--border)', borderRight: 'none' }}>
-              <i className="bi bi-search" style={{ color: 'var(--text-muted)' }} />
-            </span>
-            <input
-              className="form-control"
-              style={{ borderLeft: 'none' }}
-              placeholder="Search by name, email or phone..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            />
-            {search && (
-              <button className="btn btn-outline-secondary" onClick={() => { setSearch(''); setPage(1); }}>
-                <i className="bi bi-x" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <SearchFilterBar
+        search={search}
+        onSearchChange={v => { setSearch(v); setPage(1); }}
+        searchPlaceholder="Search by name, email or phone…"
+        filters={PATIENT_FILTERS}
+        values={filters}
+        onFilterChange={handleFilterChange}
+        onReset={handleReset}
+        resultCount={total}
+        resultLabel="patient"
+      />
 
-      {/* Table */}
-      {loading ? <Spinner /> : (
+      {loading ? <TableSkeleton rows={6} cols={7} /> : (
         <div className="card">
           <div className="table-responsive">
             <table className="table table-hover mb-0">
@@ -112,20 +140,20 @@ export default function Patients() {
                   <th>Phone</th>
                   <th>Blood Group</th>
                   <th>Conditions</th>
+                  <th>Registered</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {patients.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-5" style={{ color: 'var(--text-light)' }}>
+                    <td colSpan={7} className="text-center py-5" style={{ color: 'var(--text-light)' }}>
                       <i className="bi bi-people d-block mb-2" style={{ fontSize: '2rem' }} />
-                      {search ? 'No patients match your search' : 'No patients yet — add one to get started'}
+                      {search ? 'No patients match your search' : 'No patients found'}
                     </td>
                   </tr>
-                ) : patients.map((p) => (
+                ) : patients.map(p => (
                   <tr key={p._id}>
-                    {/* Name + email */}
                     <td>
                       <div className="d-flex align-items-center gap-2">
                         <Avatar name={p.name} />
@@ -135,51 +163,34 @@ export default function Patients() {
                         </div>
                       </div>
                     </td>
-
-                    {/* Age / gender */}
                     <td>
                       <div style={{ fontSize: '0.875rem' }}>{p.age ? p.age + ' yrs' : '—'}</div>
-                      {p.gender && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                          {p.gender}
-                        </div>
-                      )}
+                      {p.gender && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{p.gender}</div>}
                     </td>
-
-                    {/* Phone */}
                     <td style={{ fontSize: '0.875rem' }}>{p.phone || '—'}</td>
-
-                    {/* Blood group */}
                     <td>
                       {p.bloodGroup ? (
                         <span style={{ background: '#fee2e2', color: '#991b1b', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99 }}>
                           {p.bloodGroup}
                         </span>
-                      ) : (
-                        <span style={{ color: 'var(--text-light)' }}>—</span>
-                      )}
+                      ) : <span style={{ color: 'var(--text-light)' }}>—</span>}
                     </td>
-
-                    {/* Conditions */}
                     <td>
                       <div className="d-flex flex-wrap gap-1">
-                        {(p.chronicDiseases || []).slice(0, 2).map((d) => (
-                          <span key={d} style={{ background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 600, padding: '1px 7px', borderRadius: 99 }}>
-                            {d}
-                          </span>
+                        {(p.chronicDiseases || []).slice(0, 2).map(d => (
+                          <span key={d} style={{ background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 600, padding: '1px 7px', borderRadius: 99 }}>{d}</span>
                         ))}
                         {(p.chronicDiseases || []).length > 2 && (
                           <span style={{ background: 'var(--bg)', color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600, padding: '1px 7px', borderRadius: 99, border: '1px solid var(--border)' }}>
                             +{p.chronicDiseases.length - 2}
                           </span>
                         )}
-                        {!(p.chronicDiseases || []).length && (
-                          <span style={{ color: 'var(--text-light)', fontSize: '0.8rem' }}>—</span>
-                        )}
+                        {!(p.chronicDiseases || []).length && <span style={{ color: 'var(--text-light)', fontSize: '0.8rem' }}>—</span>}
                       </div>
                     </td>
-
-                    {/* Actions */}
+                    <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
                     <td>
                       <div className="d-flex gap-1">
                         <button className="btn btn-sm btn-outline-primary" title="View Profile" onClick={() => openView(p)}>
@@ -191,12 +202,12 @@ export default function Patients() {
                           </button>
                         )}
                         {canDo('records', 'create') && (
-                          <Link to={'/records/new?patient=' + p._id} className="btn btn-sm btn-outline-secondary" title="New Record">
+                          <Link to={'/app/records/new?patient=' + p._id} className="btn btn-sm btn-outline-secondary" title="New Record">
                             <i className="bi bi-file-earmark-plus" />
                           </Link>
                         )}
                         {canDo('timeline', 'view') && (
-                          <Link to={'/timeline/' + p._id} className="btn btn-sm btn-outline-secondary" title="Timeline">
+                          <Link to={'/app/timeline/' + p._id} className="btn btn-sm btn-outline-secondary" title="Timeline">
                             <i className="bi bi-clock-history" />
                           </Link>
                         )}
@@ -214,19 +225,9 @@ export default function Patients() {
         <Pagination page={page} pages={pages} onPageChange={setPage} />
       </div>
 
-      {/* Modals */}
-      <PatientFormModal
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        patient={selected}
-        onSaved={handleSaved}
-      />
-      <PatientViewModal
-        open={viewOpen}
-        onClose={() => setViewOpen(false)}
-        patient={selected}
-        onEdit={(p) => { setSelected(p); setFormOpen(true); }}
-      />
+      <PatientFormModal open={formOpen} onClose={() => setFormOpen(false)} patient={selected} onSaved={handleSaved} />
+      <PatientViewModal open={viewOpen} onClose={() => setViewOpen(false)} patient={selected}
+        onEdit={p => { setSelected(p); setFormOpen(true); }} />
     </div>
   );
 }

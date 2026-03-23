@@ -26,6 +26,13 @@ const userSchema = new mongoose.Schema(
     experience: { type: Number },
     isActive: { type: Boolean, default: true },
     avatar: { type: String, default: '' },
+    // Security
+    refreshToken:    { type: String, default: null },
+    passwordResetOTP:{ type: String, default: null },
+    otpExpiry:       { type: Date,   default: null },
+    otpAttempts:     { type: Number, default: 0 },   // wrong OTP attempts
+    loginAttempts:   { type: Number, default: 0 },
+    lockUntil:       { type: Date,   default: null },
   },
   { timestamps: true }
 );

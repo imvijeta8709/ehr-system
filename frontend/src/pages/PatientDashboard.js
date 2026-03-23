@@ -198,7 +198,7 @@ export default function PatientDashboard() {
                 </div>
               )}
 
-              <Link to="/profile" className="btn btn-outline-primary btn-sm mt-auto">
+              <Link to="/app/profile" className="btn btn-outline-primary btn-sm mt-auto">
                 <i className="bi bi-person-circle me-1" />View Full Profile
               </Link>
             </div>
@@ -212,7 +212,7 @@ export default function PatientDashboard() {
               <div className="card">
                 <div className="card-header d-flex justify-content-between align-items-center">
                   <span><i className="bi bi-droplet-half me-2" style={{ color: '#ef4444' }} />Blood Pressure Trend</span>
-                  <Link to="/vitals" className="btn btn-sm btn-outline-primary">Log Vitals</Link>
+                  <Link to="/app/vitals" className="btn btn-sm btn-outline-primary">Log Vitals</Link>
                 </div>
                 <div className="card-body" style={{ height: 130 }}>
                   {vitals.length > 1
@@ -243,7 +243,7 @@ export default function PatientDashboard() {
           <div className="card h-100">
             <div className="card-header d-flex justify-content-between align-items-center">
               <span>Recent Medical Records</span>
-              <Link to="/timeline" className="btn btn-sm btn-outline-primary">Timeline</Link>
+              <Link to="/app/timeline" className="btn btn-sm btn-outline-primary">Timeline</Link>
             </div>
             <ul className="list-group list-group-flush">
               {records.length === 0 ? (

@@ -5,9 +5,10 @@ const checkPermission = require('../middleware/permission');
 const upload = require('../middleware/upload');
 const {
   getPatients, getDoctors, getUserById,
-  updateUser, deleteUser, getDashboardStats, uploadAvatar, getAnalytics,
+  updateUser, deleteUser, getDashboardStats, uploadAvatar, getAnalytics, getAdminStats,
 } = require('../controllers/userController');
 
+router.get('/admin-stats',  protect, authorize('admin', 'superadmin'), getAdminStats);
 router.get('/stats',        protect, authorize('admin', 'doctor', 'superadmin'), getDashboardStats);
 router.get('/analytics',    protect, authorize('admin', 'doctor', 'superadmin'), getAnalytics);
 router.get('/patients',     protect, checkPermission('patients', 'view'), getPatients);

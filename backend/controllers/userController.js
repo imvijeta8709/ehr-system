@@ -1,25 +1,21 @@
 const User = require('../models/User');
 const Appointment = require('../models/Appointment');
+const BloodRequest = require('../models/BloodRequest');
+const Donor = require('../models/Donor');
 
 // GET /api/users/patients — doctor sees only their own patients; admin sees all
 exports.getPatients = async (req, res) => {
   try {
-    const { search, page = 1, limit = 10 } = req.query;
+    const { search, page = 1, limit = 10, bloodGroup, gender, ageMin, ageMax, dateFrom, dateTo, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
 
     let patientIds = null;
-
-    // Doctors only see patients they have appointments with
     if (req.user.role === 'doctor') {
       const appointments = await Appointment.find({ doctor: req.user._id }).distinct('patient');
       patientIds = appointments;
     }
 
     const query = { role: 'patient' };
-
-    // Scope to doctor's own patients
-    if (patientIds !== null) {
-      query._id = { $in: patientIds };
-    }
+    if (patientIds !== null) query._id = { $in: patientIds };
 
     if (search) {
       query.$or = [
@@ -28,13 +24,26 @@ exports.getPatients = async (req, res) => {
         { phone: { $regex: search, $options: 'i' } },
       ];
     }
+    if (bloodGroup) query.bloodGroup = bloodGroup;
+    if (gender)     query.gender     = gender;
+    if (ageMin || ageMax) {
+      query.age = {};
+      if (ageMin) query.age.$gte = parseInt(ageMin);
+      if (ageMax) query.age.$lte = parseInt(ageMax);
+    }
+    if (dateFrom || dateTo) {
+      query.createdAt = {};
+      if (dateFrom) query.createdAt.$gte = new Date(dateFrom);
+      if (dateTo)   query.createdAt.$lte = new Date(new Date(dateTo).setHours(23, 59, 59));
+    }
 
+    const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
     const total    = await User.countDocuments(query);
     const patients = await User.find(query)
       .select('-password')
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
-      .sort({ createdAt: -1 });
+      .sort(sort);
 
     res.json({ success: true, total, page: parseInt(page), pages: Math.ceil(total / limit), patients });
   } catch (err) {
@@ -45,8 +54,27 @@ exports.getPatients = async (req, res) => {
 // GET /api/users/doctors — any authenticated user can list doctors (read-only)
 exports.getDoctors = async (req, res) => {
   try {
-    const doctors = await User.find({ role: { $in: ['doctor', 'admin'] } }).select('-password');
-    res.json({ success: true, doctors });
+    const { search, specialization, page = 1, limit = 20, sortBy = 'name', sortOrder = 'asc' } = req.query;
+
+    const query = { role: { $in: ['doctor', 'admin'] } };
+    if (search) {
+      query.$or = [
+        { name:           { $regex: search, $options: 'i' } },
+        { email:          { $regex: search, $options: 'i' } },
+        { specialization: { $regex: search, $options: 'i' } },
+      ];
+    }
+    if (specialization) query.specialization = { $regex: specialization, $options: 'i' };
+
+    const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+    const total   = await User.countDocuments(query);
+    const doctors = await User.find(query)
+      .select('-password')
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .sort(sort);
+
+    res.json({ success: true, total, page: parseInt(page), pages: Math.ceil(total / limit), doctors });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -192,6 +220,97 @@ exports.getDashboardStats = async (req, res) => {
     ]);
 
     res.json({ success: true, stats: { totalPatients, totalDoctors, activePatients } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// GET /api/users/admin-stats — superadmin: full platform overview
+exports.getAdminStats = async (req, res) => {
+  try {
+    const months = 6;
+    const now = new Date();
+
+    // ── Totals ──────────────────────────────────────────────────
+    const [
+      totalPatients, totalDoctors,
+      totalAppointments, pendingAppointments, completedAppointments,
+      totalBloodRequests, pendingBloodRequests, fulfilledBloodRequests,
+      totalDonors,
+    ] = await Promise.all([
+      User.countDocuments({ role: 'patient' }),
+      User.countDocuments({ role: { $in: ['doctor', 'admin'] } }),
+      Appointment.countDocuments({}),
+      Appointment.countDocuments({ status: 'pending' }),
+      Appointment.countDocuments({ status: 'completed' }),
+      BloodRequest.countDocuments({}),
+      BloodRequest.countDocuments({ status: 'pending' }),
+      BloodRequest.countDocuments({ status: 'fulfilled' }),
+      Donor.countDocuments({}),
+    ]);
+
+    // ── Revenue ─────────────────────────────────────────────────
+    const [apptRevAgg, bloodRevAgg] = await Promise.all([
+      Appointment.aggregate([
+        { $match: { paymentStatus: 'paid' } },
+        { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+      ]),
+      BloodRequest.aggregate([
+        { $match: { paymentStatus: 'paid' } },
+        { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+      ]),
+    ]);
+    const apptRevenue  = apptRevAgg[0]?.total  ?? 0;
+    const bloodRevenue = bloodRevAgg[0]?.total ?? 0;
+    const totalRevenue = apptRevenue + bloodRevenue;
+
+    // ── Monthly trends (last 6 months) ──────────────────────────
+    const labels = [];
+    const appointmentCounts = [];
+    const patientCounts = [];
+    const revenueCounts = [];
+    const bloodRequestCounts = [];
+
+    for (let i = months - 1; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end   = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+      labels.push(start.toLocaleString('default', { month: 'short', year: '2-digit' }));
+
+      const [appts, patients, revAgg, bloodReqs] = await Promise.all([
+        Appointment.countDocuments({ date: { $gte: start, $lte: end } }),
+        User.countDocuments({ role: 'patient', createdAt: { $gte: start, $lte: end } }),
+        Appointment.aggregate([
+          { $match: { paymentStatus: 'paid', paidAt: { $gte: start, $lte: end } } },
+          { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+        ]),
+        BloodRequest.countDocuments({ createdAt: { $gte: start, $lte: end } }),
+      ]);
+
+      appointmentCounts.push(appts);
+      patientCounts.push(patients);
+      revenueCounts.push(revAgg[0]?.total ?? 0);
+      bloodRequestCounts.push(bloodReqs);
+    }
+
+    // ── Blood group distribution ─────────────────────────────────
+    const bloodGroupAgg = await Donor.aggregate([
+      { $group: { _id: '$bloodGroup', count: { $sum: 1 } } },
+      { $sort: { _id: 1 } },
+    ]);
+    const bloodGroupLabels = bloodGroupAgg.map(b => b._id);
+    const bloodGroupCounts = bloodGroupAgg.map(b => b.count);
+
+    res.json({
+      success: true,
+      totals: {
+        totalPatients, totalDoctors,
+        totalAppointments, pendingAppointments, completedAppointments,
+        totalBloodRequests, pendingBloodRequests, fulfilledBloodRequests,
+        totalDonors, totalRevenue, apptRevenue, bloodRevenue,
+      },
+      trends: { labels, appointmentCounts, patientCounts, revenueCounts, bloodRequestCounts },
+      bloodGroups: { labels: bloodGroupLabels, counts: bloodGroupCounts },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
+import { BtnSpinner } from '../components/Spinner';
 
 export default function Login() {
   const { login } = useAuth();
@@ -15,7 +16,7 @@ export default function Login() {
     try {
       const user = await login(form.email, form.password);
       toast.success(`Welcome back, ${user.name}`);
-      navigate('/dashboard');
+      navigate('/app/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally {
@@ -54,7 +55,12 @@ export default function Login() {
           </div>
 
           <div className="mb-4">
-            <label className="form-label">Password</label>
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <label className="form-label mb-0">Password</label>
+              <Link to="/forgot-password" style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 500 }}>
+                Forgot password?
+              </Link>
+            </div>
             <div className="input-group">
               <span className="input-group-text" style={{ background: 'var(--bg)', border: '1.5px solid var(--border)', borderRight: 'none', borderRadius: '8px 0 0 8px' }}>
                 <i className="bi bi-lock" style={{ color: 'var(--text-muted)' }} />
@@ -71,10 +77,10 @@ export default function Login() {
             </div>
           </div>
 
-          <button className="btn btn-primary w-100 py-2" disabled={loading} style={{ fontSize: '0.9375rem' }}>
+          <button className="btn btn-primary w-100 py-2" disabled={loading} style={{ fontSize: '0.9375rem', justifyContent: 'center' }}>
             {loading
-              ? <><span className="spinner-border spinner-border-sm me-2" />Signing in...</>
-              : <><i className="bi bi-box-arrow-in-right me-2" />Sign In</>
+              ? <><BtnSpinner /><span>Signing in...</span></>
+              : <><i className="bi bi-box-arrow-in-right" />Sign In</>
             }
           </button>
         </form>

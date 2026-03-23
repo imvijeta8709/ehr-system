@@ -47,6 +47,7 @@ export default function DoctorDashboard() {
   const [apptStats, setApptStats]           = useState(null);
   const [recentAppointments, setRecent]     = useState([]);
   const [analytics, setAnalytics]           = useState(null);
+  const [bloodStats, setBloodStats]         = useState(null);
   const [loading, setLoading]               = useState(true);
   const [addPatientOpen, setAddPatientOpen] = useState(false);
 
@@ -56,11 +57,13 @@ export default function DoctorDashboard() {
       api.get('/appointments/stats'),
       api.get('/appointments?limit=5'),
       api.get('/users/analytics'),
-    ]).then(([u, a, appts, anl]) => {
+      api.get('/blood/requests?limit=1').catch(() => ({ data: { total: 0 } })),
+    ]).then(([u, a, appts, anl, blood]) => {
       setStats(u.data.stats);
       setApptStats(a.data.stats);
       setRecent(appts.data.appointments);
       setAnalytics(anl.data);
+      setBloodStats({ total: blood.data.total ?? 0 });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -112,7 +115,7 @@ export default function DoctorDashboard() {
           <button className="btn btn-outline-primary btn-sm" onClick={() => setAddPatientOpen(true)}>
             <i className="bi bi-person-plus me-1" />Add Patient
           </button>
-          <Link to="/records/new" className="btn btn-primary btn-sm">
+          <Link to="/app/records/new" className="btn btn-primary btn-sm">
             <i className="bi bi-plus-lg me-1" />New Record
           </Link>
         </div>
@@ -120,12 +123,11 @@ export default function DoctorDashboard() {
 
       {/* Stats */}
       <div className="row g-3 mb-4">
-        <StatCard label="Total Patients"  value={stats?.totalPatients}  icon="bi-people"       iconClass="stat-icon-primary"   accent="var(--primary)"   />
-        <StatCard label="Total Doctors"   value={stats?.totalDoctors}   icon="bi-person-badge" iconClass="stat-icon-secondary" accent="var(--secondary)" />
-        <StatCard label="Pending"         value={apptStats?.pending}    icon="bi-clock"        iconClass="stat-icon-warning"   accent="#f59e0b"          />
-        <StatCard label="Completed"       value={apptStats?.completed}  icon="bi-check-circle" iconClass="stat-icon-secondary" accent="var(--secondary)" sub={`${apptStats?.cancelled || 0} cancelled`} />
+        <StatCard label="Total Patients"  value={stats?.totalPatients}  icon="bi-people"        iconClass="stat-icon-primary"   accent="var(--primary)"   />
+        <StatCard label="Total Doctors"   value={stats?.totalDoctors}   icon="bi-person-badge"  iconClass="stat-icon-secondary" accent="var(--secondary)" />
+        <StatCard label="Appointments"    value={apptStats?.total}      icon="bi-calendar-check" iconClass="stat-icon-warning"  accent="#f59e0b"          sub={`${apptStats?.pending || 0} pending · ${apptStats?.completed || 0} done`} />
+        <StatCard label="Blood Requests"  value={bloodStats?.total}     icon="bi-droplet-half"  iconClass="stat-icon-danger"    accent="#ef4444"          sub={`${apptStats?.cancelled || 0} appts cancelled`} />
       </div>
-
       {/* Charts row */}
       {analytics && (
         <div className="row g-3 mb-4">

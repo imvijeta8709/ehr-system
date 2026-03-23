@@ -6,6 +6,9 @@ require('dotenv').config();
 
 const app = express();
 
+// Trust proxy (needed for express-rate-limit behind reverse proxy / dev tools)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -23,8 +26,12 @@ app.use('/api/vitals', require('./routes/vitals'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/permissions', require('./routes/permissions'));
-app.use('/api/blood',   require('./routes/bloodBank'));
-app.use('/api/billing', require('./routes/billing'));
+app.use('/api/blood',      require('./routes/bloodBank'));
+app.use('/api/billing',   require('./routes/billing'));
+app.use('/api/stripe',    require('./routes/stripe'));
+app.use('/api/documents',    require('./routes/documents'));
+app.use('/api/availability', require('./routes/availability'));
+app.use('/api/ai',           require('./routes/ai'));
 
 // Global error handler
 app.use((err, req, res, next) => {
