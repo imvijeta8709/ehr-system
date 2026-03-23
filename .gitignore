@@ -1,0 +1,26 @@
+# Environment files
+.env
+backend/.env
+frontend/.env
+*.env
+
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build cache
+frontend/node_modules/.cache/
+build/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads (user data)
+backend/uploads/*
+!backend/uploads/.gitkeep
