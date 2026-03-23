@@ -104,6 +104,7 @@ export const AuthProvider = ({ children }) => {
     return res.data.user;
   };
 
+  
   const logout = async () => {
     try { await api.post('/auth/logout'); } catch {}
     _clearSession();
