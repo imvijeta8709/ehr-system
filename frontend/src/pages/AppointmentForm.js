@@ -131,7 +131,7 @@ export default function AppointmentForm() {
               ) : availableSlots.length === 0 ? (
                 <div className="p-3 rounded text-center" style={{ background: '#fff8f0', border: '1px solid #fde8cc', color: '#b45309', fontSize: '0.85rem' }}>
                   <i className="bi bi-calendar-x me-2" />
-                  No available slots for this date. Try another date.
+                  No available slots for this date. Doctor may not have set availability for this day — try another date.
                 </div>
               ) : (
                 <div className="d-flex flex-wrap gap-2 mt-1">

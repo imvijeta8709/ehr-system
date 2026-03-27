@@ -45,6 +45,25 @@ function PreviewModal({ doc, onClose }) {
   const isPdf   = doc.fileType?.includes('pdf');
   const isImage = doc.fileType?.includes('image');
 
+  const handleDownload = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_URL}/api/documents/${doc._id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc.filename;
+      a.click();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      alert('Download failed');
+    }
+  };
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1050, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}>
@@ -61,10 +80,10 @@ function PreviewModal({ doc, onClose }) {
               {CAT_META[doc.category]?.label} · {formatSize(doc.fileSize)} · {new Date(doc.uploadedAt).toLocaleDateString()}
             </div>
           </div>
-          <a href={url} download={doc.filename}
-            style={{ background: '#2A7FFF', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 1rem', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={handleDownload}
+            style={{ background: '#2A7FFF', color: '#fff', border: 'none', borderRadius: 8, padding: '0.45rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             <i className="bi bi-download" />Download
-          </a>
+          </button>
           <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6B7280', fontSize: '1rem' }}>
             <i className="bi bi-x-lg" />
           </button>
@@ -82,9 +101,9 @@ function PreviewModal({ doc, onClose }) {
             <div style={{ textAlign: 'center', padding: '3rem', color: '#6B7280' }}>
               <i className="bi bi-file-earmark" style={{ fontSize: '3rem', display: 'block', marginBottom: '1rem' }} />
               <p>Preview not available for this file type.</p>
-              <a href={url} download={doc.filename} className="btn btn-primary btn-sm">
+              <button onClick={handleDownload} className="btn btn-primary btn-sm">
                 <i className="bi bi-download me-1" />Download File
-              </a>
+              </button>
             </div>
           )}
         </div>
@@ -218,6 +237,25 @@ function UploadPanel({ patients, onUploaded }) {
 // ── Document Card ────────────────────────────────────────────────
 function DocCard({ doc, canDelete, onPreview, onDelete }) {
   const catMeta = CAT_META[doc.category] || CAT_META.other;
+
+  const handleDownload = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_URL}/api/documents/${doc._id}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Download failed');
+    }
+  };
   return (
     <div style={{ background: '#fff', border: '1px solid #E5EAF0', borderRadius: 14, overflow: 'hidden', transition: 'all 0.18s', display: 'flex', flexDirection: 'column' }}
       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.09)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
@@ -271,10 +309,10 @@ function DocCard({ doc, canDelete, onPreview, onDelete }) {
         <button onClick={() => onPreview(doc)} style={{ flex: 1, background: '#f0f7ff', color: '#2A7FFF', border: 'none', borderRadius: 7, padding: '0.35rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
           <i className="bi bi-eye me-1" />Preview
         </button>
-        <a href={`${BASE_URL}${doc.fileUrl}`} download={doc.filename}
-          style={{ flex: 1, background: '#f0fdf4', color: '#16a34a', border: 'none', borderRadius: 7, padding: '0.35rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'none', textAlign: 'center' }}>
+        <button onClick={handleDownload}
+          style={{ flex: 1, background: '#f0fdf4', color: '#16a34a', border: 'none', borderRadius: 7, padding: '0.35rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
           <i className="bi bi-download me-1" />Download
-        </a>
+        </button>
         {canDelete && (
           <button onClick={() => onDelete(doc)} style={{ background: '#fff0f0', color: '#ef4444', border: 'none', borderRadius: 7, padding: '0.35rem 0.6rem', fontSize: '0.78rem', cursor: 'pointer' }}>
             <i className="bi bi-trash" />

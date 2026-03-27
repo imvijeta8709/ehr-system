@@ -11,8 +11,9 @@ exports.getAvailableSlots = async (req, res) => {
     const avail = await DoctorAvailability.findOne({ doctor: doctorId });
     if (!avail) return res.json({ success: true, slots: [] });
 
-    const dateObj = new Date(date);
-    const dayOfWeek = dateObj.getDay(); // 0-6
+    // Parse date parts directly from string to avoid timezone shift
+    const [year, month, day] = date.split('-').map(Number);
+    const dayOfWeek = new Date(year, month - 1, day).getDay(); // 0=Sun, 6=Sat
 
     // Check override first
     const override = avail.overrides.find(o => o.date === date);
@@ -30,9 +31,12 @@ exports.getAvailableSlots = async (req, res) => {
     if (slots.length === 0) return res.json({ success: true, slots: [] });
 
     // Remove already-booked slots
+    const [y, m, d] = date.split('-').map(Number);
+    const dayStart = new Date(y, m - 1, d);
+    const dayEnd   = new Date(y, m - 1, d + 1);
     const booked = await Appointment.find({
       doctor: doctorId,
-      date: { $gte: new Date(date), $lt: new Date(new Date(date).getTime() + 86400000) },
+      date: { $gte: dayStart, $lt: dayEnd },
       status: { $in: ['pending', 'confirmed'] },
     }).select('timeSlot');
 

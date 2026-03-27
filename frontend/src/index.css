@@ -128,8 +128,8 @@ a:hover { color: var(--primary-dark); }
   background: linear-gradient(180deg, #0d2647 0%, #163d6e 55%, #0f5a52 100%);
   box-shadow: 4px 0 28px rgba(0,0,0,0.15);
   transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-  overflow-y: auto;
   overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 .sidebar-brand {
@@ -218,11 +218,20 @@ a:hover { color: var(--primary-dark); }
   flex-shrink: 0;
 }
 
+.sidebar-nav-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: 1rem 1.25rem;
   border-top: 1px solid rgba(255,255,255,0.08);
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, transparent 0%, #0f5a52 40%);
 }
 
 /* Mobile overlay */

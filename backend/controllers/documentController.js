@@ -167,3 +167,31 @@ exports.deleteDocument = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// GET /api/documents/:attachmentId/download
+exports.downloadDocument = async (req, res) => {
+  try {
+    const { attachmentId } = req.params;
+
+    const record = await Record.findOne({ 'attachments._id': attachmentId });
+    if (!record) return res.status(404).json({ success: false, message: 'Document not found' });
+
+    const att = record.attachments.id(attachmentId);
+
+    // Patients can only download their own documents
+    if (req.user.role === 'patient' && record.patient.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    const filePath = resolveFilePath(att.fileUrl);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'File not found on server' });
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${att.filename}"`);
+    res.setHeader('Content-Type', att.fileType || 'application/octet-stream');
+    res.sendFile(filePath);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

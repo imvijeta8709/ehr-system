@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../context/PermissionsContext';
@@ -29,6 +29,8 @@ export default function Layout() {
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef();
 
   const isSuperAdmin = user?.role === 'superadmin';
   const isAdminLike  = user?.role === 'admin' || isSuperAdmin;
@@ -67,6 +69,17 @@ export default function Layout() {
 
   const closeSidebar = () => setSidebarOpen(false);
 
+  // Close user menu on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   return (
     <div className="d-flex">
       {/* Mobile overlay */}
@@ -103,6 +116,7 @@ export default function Layout() {
           </div>
         </div>
 
+        <div className="sidebar-nav-scroll">
         <div className="sidebar-section-label">Main</div>
 
         {canDo('dashboard', 'view') && (
@@ -170,16 +184,9 @@ export default function Layout() {
         {canDo('profile', 'view') && (
           <NavItem to="/app/profile"><i className="bi bi-person-circle" />Profile</NavItem>
         )}
-
-        <div className="sidebar-footer">
-          <button
-            className="btn btn-sm w-100 text-start d-flex align-items-center gap-2"
-            style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.75)', border: 'none', borderRadius: 8 }}
-            onClick={handleLogout}
-          >
-            <i className="bi bi-box-arrow-right" />Logout
-          </button>
         </div>
+
+        <div className="sidebar-footer" />
       </nav>
 
       {/* ── Main ── */}
@@ -274,19 +281,52 @@ export default function Layout() {
             )}
           </div>
 
-          {/* User chip */}
-          <div
-            className="d-flex align-items-center gap-2 px-3 py-1 rounded-pill"
-            style={{ background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.8125rem', cursor: 'pointer' }}
-            onClick={() => navigate('/app/profile')}
-          >
+          {/* User chip with dropdown */}
+          <div ref={userMenuRef} style={{ position: 'relative' }}>
             <div
-              className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
-              style={{ width: 28, height: 28, fontSize: '0.75rem', background: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}
+              className="d-flex align-items-center gap-2 px-3 py-1 rounded-pill"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.8125rem', cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => setShowUserMenu(v => !v)}
             >
-              {user?.name?.[0]?.toUpperCase()}
+              <div
+                className="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold"
+                style={{ width: 28, height: 28, fontSize: '0.75rem', background: 'linear-gradient(135deg, var(--primary), var(--secondary))' }}
+              >
+                {user?.name?.[0]?.toUpperCase()}
+              </div>
+              <span style={{ color: 'var(--text)', fontWeight: 500 }}>{user?.name}</span>
+              <i className="bi bi-chevron-down" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 2 }} />
             </div>
-            <span style={{ color: 'var(--text)', fontWeight: 500 }}>{user?.name}</span>
+
+            {showUserMenu && (
+              <div style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 8px)',
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 10, boxShadow: 'var(--shadow-lg)',
+                minWidth: 180, zIndex: 1000, overflow: 'hidden',
+                animation: 'scaleIn 0.15s ease', transformOrigin: 'top right',
+              }}>
+                <div style={{ padding: '0.6rem 1rem', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {user?.email}
+                </div>
+                <button
+                  onClick={() => { setShowUserMenu(false); navigate('/app/profile'); }}
+                  style={{ width: '100%', background: 'none', border: 'none', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.875rem', color: 'var(--text)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <i className="bi bi-person-circle" style={{ color: 'var(--primary)' }} /> My Profile
+                </button>
+                <button
+                  onClick={() => { setShowUserMenu(false); handleLogout(); }}
+                  style={{ width: '100%', background: 'none', border: 'none', padding: '0.6rem 1rem', textAlign: 'left', fontSize: '0.875rem', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid var(--border)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#fff0f0'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <i className="bi bi-box-arrow-right" /> Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
