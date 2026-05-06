@@ -20,6 +20,9 @@ app.use(express.urlencoded({ extended: true }));
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Serve React frontend build
+app.use(express.static(path.join(__dirname, 'client')));
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
@@ -35,6 +38,11 @@ app.use('/api/stripe',    require('./routes/stripe'));
 app.use('/api/documents',    require('./routes/documents'));
 app.use('/api/availability', require('./routes/availability'));
 app.use('/api/ai',           require('./routes/ai'));
+
+// Catch-all: serve React app for any non-API route
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client', 'index.html'));
+});
 
 // Global error handler
 app.use((err, req, res, next) => {
